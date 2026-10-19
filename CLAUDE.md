@@ -51,8 +51,16 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - `state_medicare_spend` — Medicare spend per **Original Medicare (FFS)** beneficiary by state and year (2014+): actual and price-standardized (`*_stdzd_*`) total and inpatient, plus MA participation, dual-eligible share, age, readmission % and ER visits. No risk score in the file, so spend is price- but not risk-adjusted. Exclude or flag PR (96% MA, ~27k FFS benes) and VI in comparisons; standardization matters (AK: $12,050 actual vs $9,209 standardized in 2024).
 - `source_loads` — which upstream version of a non-CMS source (CDC, Medicare GV) was loaded, and when
 
+### Analysis (`migrations/006_analysis.sql`, `backend/src/analysis/index.ts`)
+- `analysis_*_live` views compute from current data; `npm run analyze --workspace=backend` freezes them into `analysis_state_measure`, `analysis_correlations` and `analysis_hospital_percentiles` under a new `analysis_runs` row, only when the input fingerprint (CMS release per measure + CDC + spend versions) changed. CDC revises past weeks in place, so snapshots keep what was published. Read through `analysis_latest_*` views.
+- Scope: 50 states + DC (`analysis_states`). Each measure uses its newest scored release (`analysis_measure_windows`, same rule as the rankings API) and **its own window**.
+- State outcome = case-weighted mean of hospital scores (PSI_90 has no denominators → unweighted). Strain = mean over in-window weeks with ≥50% reporting coverage and occupancy ≤100%; respiratory admissions = COVID + flu per 100 beds (RSV voluntary pre-Nov 2024). Spend = standardized $/FFS bene over overlapping years, weighted by overlap days.
+- Correlations per measure × factor across states: Pearson r + Fisher-z 95% CI and p, Spearman (average ranks), partial r controlling for dual-eligible share + CI and p, and `partial_q_value` (Benjamini–Hochberg across all tests in the run). **Use `partial_q_value < 0.05` as the significance bar.** Sign is in measure units — check `higher_is_better`.
+- Spend data ends 2024, so 1-year windows ending Sep 2025 (OP_18b, HCAHPS) have spend for 25% of the window; justified because state standardized spend correlates ≥0.987 year over year.
+- Statistics were cross-checked against an independent JS implementation (r, rho, partial r, BH q all match).
+
 ### Scheduled ingestion
-Both need the `DATABASE_URL_UNPOOLED` repo secret and run migrate first.
+Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyze` last.
 - `.github/workflows/ingest.yml` — CMS hospital measures + Medicare spend, monthly (1st) + manual dispatch (optionally forced)
 - `.github/workflows/ingest-strain.yml` — CDC, weekly (Saturday) + manual dispatch
 

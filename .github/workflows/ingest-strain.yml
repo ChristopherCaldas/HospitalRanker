@@ -31,3 +31,5 @@ jobs:
       - run: npm ci
       - run: npm run migrate --workspace=backend
       - run: npm run ingest:strain --workspace=backend -- ${{ inputs.force && '--force' || '' }}
+      # New snapshot only if the CDC version changed.
+      - run: npm run analyze --workspace=backend
