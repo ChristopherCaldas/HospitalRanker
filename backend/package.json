@@ -10,9 +10,11 @@
     "ingest:strain": "tsx src/ingest/strain.ts",
     "ingest:spend": "tsx src/ingest/spend.ts",
     "analyze": "tsx src/analysis/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "create-readonly-role": "tsx src/db/createReadonlyRole.ts"
   },
   "dependencies": {
+    "@vercel/functions": "^3.10.1",
     "axios": "^1.6.0",
     "cors": "^2.8.5",
     "csv-parse": "^7.0.3",
