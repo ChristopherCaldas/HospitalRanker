@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { getHospital, searchHospitals } from '../services/hospitals'
+import { getHospitalPerformance } from '../services/performance'
 
 const router = Router()
 
@@ -24,7 +25,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Unknown hospital' })
       return
     }
-    res.json(hospital)
+    res.json({ ...hospital, performance: await getHospitalPerformance(req.params.id) })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to fetch hospital' })

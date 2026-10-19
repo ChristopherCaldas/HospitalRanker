@@ -62,6 +62,35 @@ Heart attack mortality and the PSI 90 safety composite showed no association wit
 - **Spending:** Medicare price-standardized spend per Original Medicare beneficiary, weighted by how much of each year falls inside the window. The spending file ends in 2024, so windows that run into 2025 rely on 2024 figures. State spending is very stable year to year (r ≥ 0.987 every year since 2018), which makes that a safe assumption.
 - **Statistics:** Pearson r with Fisher-z confidence intervals, Spearman ρ, partial r, and Benjamini–Hochberg q-values, all computed in SQL and checked against an independent implementation. Results are stored as snapshots whenever an input changes, because CDC revises past weeks.
 
+## Expected vs. actual: ranking hospitals with their context in mind
+
+A raw ranking rewards hospitals with easy circumstances. The **Expected vs. actual** page compares each hospital with what hospitals like it, in states like its own, would be expected to score.
+
+**First, does context matter?** For each measure, a weighted regression predicts scores from:
+- **peer group:** hospital type (critical access, VA, etc.) and ownership;
+- **state conditions:** bed occupancy, price-standardized Medicare spending, and low-income share, measured over the same period the score covers.
+
+Hospital size is deliberately left out, so larger hospitals keep credit for the quality that comes with volume. How much context explains is measured on hospitals the model didn't see (5-fold cross-validated R²):
+
+| Measure | Explained by context | Biggest factor | Adjusting reshuffles the ranking? |
+|---|---|---|---|
+| ER wait times | 37% | Hospital type and ownership | Noticeably (rank correlation 0.70) |
+| Patient satisfaction | 22% | Hospital type and ownership | Somewhat (0.86) |
+| Readmissions, mortality, patient safety | ≤ 3% | n/a | Barely (≥ 0.96); CMS already risk-adjusts these |
+
+State conditions add at most about 2 percentage points of explanatory power once hospital type is known. So the hypothesis that state strain and spending drive hospital results finds only weak support at the hospital level.
+
+**Then, who beats expectations?**
+- **Difference from expected** = actual minus expected, oriented so positive is better.
+- **Uncertainty is handled per measure:**
+  - Raw measures (ER minutes, star ratings) are pulled toward their expected score in proportion to their noise (empirical Bayes). Star ratings also get a fixed rounding-noise floor.
+  - CMS's risk-standardized rates are already smoothed by CMS, so they aren't smoothed twice. Their posterior uncertainty is used instead.
+  - PSI 90 uses CMS's published interval.
+- **Clear cases only:** a hospital is labeled better or worse than expected only when its whole 95% interval is beyond one standard deviation of real hospital-to-hospital variation.
+- **Overall ranking:** hospitals with 3 or more measures get a composite (the average difference in those standard-deviation units), shrunk again so noisy hospitals can't top the list on luck. In the current run, 4 hospitals are clearly better than expected overall and 33 clearly worse, out of 3,049.
+
+The model's math (weighted least squares with standard errors, cross-validation, noise estimation, shrinkage) is unit-tested on synthetic hospitals with planted effects and outliers.
+
 ## Roadmap (in progress)
 
 - [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
@@ -72,6 +101,7 @@ Heart attack mortality and the PSI 90 safety composite showed no association wit
 - [x] **Spend vs. outcomes.** Price-standardized spending compared against outcomes over each measure's window (see Findings).
 - [x] **Show the analysis in the app.** A States view with an equal-area tile map, a strain or spending scatter plot with its fit line, a plain-language finding, and the full correlation table.
 - [x] **Hospital explorer.** Search, plus a page per hospital showing every measure with its percentile within its state and nationally, and the state and national medians.
+- [x] **Expected vs. actual.** Context-adjusted rankings with a "does context matter?" check, a leaderboard of over- and under-performers, and expected scores on every hospital page.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [x] **Tests and CI.** Unit, API and SQL integration tests; the SQL tests run every migration on in-process Postgres 18 and check the statistics against an independent implementation. CI runs on every PR.
 - [x] **Public deployment** on Vercel. The static frontend is served from the CDN, the Express API runs as a serverless function, and it connects as a read-only database role.
