@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
-import { fetchMeasure, MEASURE_MAP } from '../services/cms'
+import { getRanking } from '../services/rankings'
 import { getQuips } from '../services/quips'
 
 const router = Router()
@@ -8,8 +8,8 @@ const router = Router()
 const CATEGORY_META: Record<string, { label: string; description: string; technicalDescription: string }> = {
   wait_times: {
     label: 'ER Wait Times',
-    description: 'Median minutes from arrival to being seen by a provider in the emergency department.',
-    technicalDescription: 'Measure OP_18b from the CMS Timely and Effective Care dataset. It captures the median time (in minutes) between a patient\'s arrival in the ED and the moment a qualified provider initiates an evaluation. Scores are derived from claims and hospital-reported data; lower values indicate faster triage and better throughput. Hospitals with very high volumes or trauma designations may skew higher independent of care quality.',
+    description: 'Median minutes patients spend in the emergency department before leaving.',
+    technicalDescription: 'Measure OP_18b from the CMS Timely and Effective Care dataset. It captures the median time (in minutes) from a patient\'s arrival in the ED to their departure, excluding patients transferred to another facility and psychiatric/mental health patients. Lower values indicate faster throughput. Hospitals with very high volumes or trauma designations may skew higher independent of care quality.',
   },
   mortality: {
     label: '30-Day Mortality',
@@ -28,8 +28,8 @@ const CATEGORY_META: Record<string, { label: string; description: string; techni
   },
   readmission: {
     label: 'Readmission Rate',
-    description: '30-day hospital-wide unplanned readmission rate. Lower means you fixed it the first time.',
-    technicalDescription: 'Measure Hybrid_HWR from the CMS Unplanned Hospital Visits dataset. The Hospital-Wide Readmission measure uses a hybrid methodology combining Medicare claims data with electronic health record data to calculate the rate of unplanned readmissions within 30 days of discharge across all eligible conditions. Risk adjustment accounts for patient demographics, principal diagnosis, and relevant comorbidities. Scores are expressed as a percentage; the national average is roughly 15%.',
+    description: '30-day unplanned readmission rate for heart failure patients. Lower means you fixed it the first time.',
+    technicalDescription: 'Measure READM_30_HF from the CMS Unplanned Hospital Visits dataset. It reports the risk-standardized rate at which Medicare patients hospitalized for heart failure are readmitted for any cause within 30 days of discharge. CMS adjusts for age, comorbidities and prior hospitalizations with a hierarchical logistic regression model, so rates are comparable across hospitals with different patient mixes. (The hospital-wide Hybrid_HWR measure used previously was suppressed by CMS in the September 2026 release.)',
   },
 }
 
@@ -43,25 +43,11 @@ router.get('/:category', async (req: Request, res: Response) => {
   }
 
   try {
-    const records = await fetchMeasure(category)
-    const measureInfo = MEASURE_MAP[category]
-
-    const sorted = [...records].sort((a, b) => {
-      const aScore = parseFloat(a.score)
-      const bScore = parseFloat(b.score)
-      return measureInfo.higherIsBetter ? bScore - aScore : aScore - bScore
-    })
-
-    const toHospital = (r: (typeof records)[0]) => ({
-      id: r.facility_id,
-      name: r.facility_name,
-      city: r.citytown,
-      state: r.state,
-      score: parseFloat(r.score),
-    })
-
-    const top5 = sorted.slice(0, 5).map(toHospital)
-    const bottom5 = sorted.slice(-5).reverse().map(toHospital)
+    const ranking = await getRanking(category)
+    if (!ranking) {
+      res.status(503).json({ error: 'No data ingested for this category yet' })
+      return
+    }
     const quips = getQuips(category)
 
     res.json({
@@ -69,11 +55,15 @@ router.get('/:category', async (req: Request, res: Response) => {
       label: meta.label,
       description: meta.description,
       technicalDescription: meta.technicalDescription,
-      top5,
-      bottom5,
+      top5: ranking.top5,
+      bottom5: ranking.bottom5,
       bestQuip: quips.best,
       worstQuip: quips.worst,
-      higherIsBetter: measureInfo.higherIsBetter,
+      higherIsBetter: ranking.higherIsBetter,
+      measureId: ranking.measureId,
+      released: ranking.released,
+      periodStart: ranking.periodStart,
+      periodEnd: ranking.periodEnd,
     })
   } catch (err) {
     console.error(err)

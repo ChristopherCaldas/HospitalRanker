@@ -30,15 +30,24 @@ npm run build        # builds frontend for production (from root)
 Two-package npm workspace: `frontend/` and `backend/`. No shared package — types are duplicated intentionally to keep the packages independent.
 
 ### Backend (`backend/src/`)
-- `index.ts` — Express entry point, mounts `/api/rankings` router
-- `routes/rankings.ts` — `GET /api/rankings/:category` — fetches, sorts, and returns top5/bottom5 with quips
-- `services/cms.ts` — fetches from CMS Provider Data Catalog REST API; results cached in Postgres for 24h
+- `index.ts` — Express entry point, mounts `/api/rankings` and `GET /api/health` (database check)
+- `routes/rankings.ts` — `GET /api/rankings/:category` — category metadata + quips around `services/rankings.ts`
+- `services/rankings.ts` — top/bottom 5 from the newest complete release that has scores for the category's measure (so a release where CMS suppressed it falls back to the previous one); ties break on case count, then name
 - `services/quips.ts` — returns a random funny quip for best/worst hospital per category
 - `db/env.ts` — loads `.env.local` / `.env` from the repo root (written by `neon env pull`)
-- `db/pool.ts` — shared `pg` Pool on the pooled `DATABASE_URL` (Neon)
-- `db/cache.ts` — `cms_cache` table (jsonb per category). TTL is 24h, configurable via `CACHE_TTL_MS`.
-- `db/migrate.ts` — applies `backend/migrations/*.sql` in order over `DATABASE_URL_UNPOOLED`; run with `npm run migrate --workspace=backend`
-- `GET /api/health` — checks the database connection
+- `db/pool.ts` — shared `pg` Pool on the pooled `DATABASE_URL` (Neon) for request traffic
+- `db/migrate.ts` — applies `backend/migrations/*.sql` in order over `DATABASE_URL_UNPOOLED`; `npm run migrate --workspace=backend`
+- `ingest/` — release-aware CMS ingestion; `npm run ingest --workspace=backend` (`-- --force` to redo current releases). Reads each dataset's metastore entry, skips CSVs already ingested for every wanted measure, otherwise downloads the CSV and stores it in one transaction. `datasets.ts` maps each dataset's CSV columns; `retry.ts` backs off on CMS 503s and HTML error pages.
+
+### Database (Postgres on Neon)
+- `cms_releases` — one row per dataset CSV (the download URL is the release identity), with status and the measures ingested
+- `hospitals` — latest attributes from Hospital General Information (`xubh-q36u`)
+- `measures` — which measures to ingest, their app category, direction and unit. **Drives ingestion.**
+- `measure_scores` — hospital × measure × release, with CI bounds, denominator, compared-to-national, footnote and the measure's own start/end dates. Unavailable scores are kept with a NULL score.
+- `latest_measure_scores` (view) — scores from each dataset's newest complete release
+
+### Scheduled ingestion
+`.github/workflows/ingest.yml` runs migrate + ingest monthly and on manual dispatch (optionally forced). Needs the `DATABASE_URL_UNPOOLED` repo secret.
 
 ### Frontend (`frontend/src/`)
 - `App.tsx` — tab state, API fetching, top-level layout
@@ -54,18 +63,19 @@ Vite proxies `/api/*` to `localhost:3001` during development.
 
 | Category | CMS Dataset ID | Measure ID | Higher is better? |
 |---|---|---|---|
-| `wait_times` | `yv7e-xc69` (Timely Care) | `OP_18b` | No |
-| `mortality` | `ynj2-r877` (Complications) | `MORT_30_AMI` | No |
-| `safety` | `ynj2-r877` (Complications) | `PSI_90_SAFETY` | No |
+| `wait_times` | `yv7e-xc69` (Timely and Effective Care) | `OP_18b` | No |
+| `mortality` | `ynj2-r877` (Complications and Deaths) | `MORT_30_AMI` | No |
+| `safety` | `ynj2-r877` (Complications and Deaths) | `PSI_90` | No |
 | `satisfaction` | `dgck-syfz` (HCAHPS) | `H_COMP_1_STAR_RATING` | Yes |
-| `readmission` | `632h-zaca` (Readmissions) | `READM_30_HOSP_WIDE` | No |
+| `readmission` | `632h-zaca` (Unplanned Hospital Visits) | `READM_30_HF` | No |
 
-CMS data updates quarterly. The 24h cache TTL in `db/cache.ts` can be raised without issue.
+`Hybrid_HWR` is still ingested with no category: CMS suppressed it for every hospital in the 2026-09-30 release. CMS releases land roughly quarterly on no fixed day; measure windows span 1–3 years and lag the release.
 
 ## Adding a New Category
 
-1. Add a measure entry to `MEASURE_MAP` in `backend/src/services/cms.ts`
-2. Add metadata (label, description) to `CATEGORY_META` in `backend/src/routes/rankings.ts`
-3. Add quip arrays to `QUIPS` in `backend/src/services/quips.ts`
-4. Add the tab entry to `CATEGORIES` in `frontend/src/App.tsx`
-5. Add the type to the `Category` union in `frontend/src/types.ts`
+1. Add a migration inserting the measure into `measures` (with its `category`). If it comes from a new dataset, add a CSV mapping to `MEASURE_DATASETS` in `backend/src/ingest/datasets.ts`
+2. Run `npm run migrate` then `npm run ingest` in `backend` — the current release is re-ingested automatically for the new measure
+3. Add metadata (label, description) to `CATEGORY_META` in `backend/src/routes/rankings.ts`
+4. Add quip arrays to `QUIPS` in `backend/src/services/quips.ts`
+5. Add the tab entry to `CATEGORIES` in `frontend/src/App.tsx`
+6. Add the type to the `Category` union in `frontend/src/types.ts`

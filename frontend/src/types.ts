@@ -16,6 +16,10 @@ export interface CategoryRanking {
   bestQuip: string
   worstQuip: string
   higherIsBetter: boolean
+  measureId: string
+  released: string | null
+  periodStart: string | null
+  periodEnd: string | null
 }
 
 export type Category = 'wait_times' | 'mortality' | 'safety' | 'satisfaction' | 'readmission'
