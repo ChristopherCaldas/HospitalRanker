@@ -1,10 +1,11 @@
 import type { Hospital } from '../types'
-import { formatValue, shortComparison } from '../lib/format'
+import { COMPARISON_HELP, formatValue, shortComparison } from '../lib/format'
 import { href } from '../lib/router'
 
 interface Props {
   hospitals: Hospital[]
   unit: string
+  caseNoun: string | null
   showCases: boolean
 }
 
@@ -14,7 +15,7 @@ const TONE = {
   worse: 'bg-red-50 text-red-800 border-red-200',
 }
 
-export default function RankingTable({ hospitals, unit, showCases }: Props) {
+export default function RankingTable({ hospitals, unit, caseNoun, showCases }: Props) {
   const showComparison = hospitals.some(h => h.comparedToNational)
 
   return (
@@ -24,7 +25,7 @@ export default function RankingTable({ hospitals, unit, showCases }: Props) {
           <tr>
             <th className="px-4 py-2 text-left">#</th>
             <th className="px-4 py-2 text-left">Hospital</th>
-            {showCases && <th className="px-4 py-2 text-right">Cases</th>}
+            {showCases && <th className="px-4 py-2 text-right" title={caseNoun ? `Number of ${caseNoun}` : undefined}>Cases</th>}
             <th className="px-4 py-2 text-right">Score</th>
           </tr>
         </thead>
@@ -42,7 +43,7 @@ export default function RankingTable({ hospitals, unit, showCases }: Props) {
                     {h.city}, {h.state}
                   </div>
                   {comparison && (
-                    <span className={`inline-block mt-1 px-1.5 py-0.5 rounded border text-xs ${TONE[comparison.tone]}`}>
+                    <span title={COMPARISON_HELP} className={`inline-block mt-1 px-1.5 py-0.5 rounded border text-xs ${TONE[comparison.tone]}`}>
                       {comparison.label}
                     </span>
                   )}
@@ -55,7 +56,7 @@ export default function RankingTable({ hospitals, unit, showCases }: Props) {
                 <td className="px-4 py-3 text-right font-mono text-gray-700 whitespace-nowrap">
                   {formatValue(h.score, unit)}
                   {h.lowerEstimate !== null && h.higherEstimate !== null && (
-                    <div className="text-xs text-gray-400 font-sans" title="95% interval published by CMS">
+                    <div className="text-xs text-gray-400 font-sans" title="CMS 95% interval: the true score very likely falls in this range">
                       {formatValue(h.lowerEstimate, unit)}–{formatValue(h.higherEstimate, unit)}
                     </div>
                   )}

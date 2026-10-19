@@ -1,8 +1,8 @@
 # 🏥 HospitalRanker
 
-*Serious data. Questionable commentary.*
+*The report card hospitals didn't ask for, built from public CMS and CDC data.*
 
-HospitalRanker ranks US hospitals on public CMS quality measures, showing the best and worst five in each category along with a quip about each. Underneath the jokes, it's a data project: ingesting federal healthcare datasets that are messy, slow to download and released on irregular schedules, then modeling them so they can be compared honestly.
+HospitalRanker ranks US hospitals on public CMS quality measures and asks whether hospital crowding and Medicare spending go along with better or worse results. It's a data project at heart: ingesting federal healthcare datasets that are messy, slow to download and released on irregular schedules, then modeling them so they can be compared honestly and explained to someone without a healthcare-data background.
 
 ## What it shows today
 
@@ -27,7 +27,7 @@ GitHub Actions (monthly) ──► ingest job ──► Neon Postgres ◄── 
 - **Ingestion** (`backend/src/ingest/`): checks each CMS dataset's metadata and downloads its CSV only when a release hasn't been stored yet, retrying through CMS's intermittent 503 errors. Each release is written in one transaction and every release is kept, so scores can be compared over time. A full run takes about 15 seconds; a run with nothing new takes about 3.
 - **Database**: Postgres on [Neon](https://neon.com). Tables: `cms_releases`, `hospitals`, `measures` (which drives what gets ingested) and `measure_scores`, which keeps confidence intervals, case counts, CMS footnotes and each measure's own reporting window. Migrations are plain SQL in `backend/migrations/`.
 - **API** (`backend/`): Express + TypeScript. Ranks from the newest release that actually has scores for a measure, and breaks ties by case count. Serves `/api/rankings/:category` and `/api/health`.
-- **Frontend** (`frontend/`): React 18, Vite, Tailwind. Category tabs, best/worst tables, quip cards.
+- **Frontend** (`frontend/`): React 18, Vite, Tailwind. Rankings with plain-language explanations, a States view (tile map, scatter plot, correlation table) and a hospital explorer.
 
 ### Data notes
 
@@ -100,4 +100,4 @@ npm run dev                            # backend on :3001, frontend on :5173
 - [CDC NHSN Weekly Hospital Respiratory Data by Jurisdiction](https://data.cdc.gov/d/ua7e-t2fy).
 - [CMS Medicare Geographic Variation, by National, State & County](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county).
 
-CMS publishes these measures roughly quarterly, and many cover multi-year windows that lag the release date. Rankings describe past performance; they aren't medical advice. The quips are jokes.
+CMS publishes these measures roughly quarterly, and many cover multi-year windows that lag the release date. Rankings describe past performance; they aren't medical advice.

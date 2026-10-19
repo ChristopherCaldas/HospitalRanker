@@ -17,8 +17,8 @@ export interface CategoryRanking {
   technicalDescription: string
   top5: Hospital[]
   bottom5: Hospital[]
-  bestQuip: string
-  worstQuip: string
+  nationalMedian: number
+  scoredHospitals: number
   higherIsBetter: boolean
   unit: string
   hasCaseCounts: boolean

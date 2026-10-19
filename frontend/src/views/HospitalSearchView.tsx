@@ -61,6 +61,12 @@ export default function HospitalSearchView() {
         </select>
       </div>
 
+      {!results && !error && (
+        <p className="text-gray-400 text-sm mt-6">
+          Try a name like “Mayo” or a city like “Boston”, or pick a state to list its hospitals. Covers every
+          Medicare-certified hospital CMS reports on, about 5,400.
+        </p>
+      )}
       {error && <p className="text-red-500 text-sm mt-6">Search failed. Try again in a moment.</p>}
       {results && results.length === 0 && <p className="text-gray-400 text-sm mt-6">No hospitals match.</p>}
       {results && results.length > 0 && (
@@ -75,8 +81,8 @@ export default function HospitalSearchView() {
                   </span>
                 </span>
                 {h.overallRating !== null && (
-                  <span className="text-sm text-gray-600 whitespace-nowrap" title="CMS overall star rating">
-                    {h.overallRating}★ overall
+                  <span className="text-sm text-gray-600 whitespace-nowrap" title="CMS's overall star rating, a summary across dozens of quality measures">
+                    CMS rating {h.overallRating} of 5
                   </span>
                 )}
               </a>

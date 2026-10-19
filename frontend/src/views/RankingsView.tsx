@@ -22,7 +22,7 @@ export default function RankingsView({ category }: { category: Category }) {
     axios
       .get<CategoryRanking>(`/api/rankings/${category}`, { params: { minCases } })
       .then(res => setData(res.data))
-      .catch(() => setError('Failed to load rankings. The hospitals are probably fine though.'))
+      .catch(() => setError("Couldn't load rankings. Try again in a moment."))
       .finally(() => setLoading(false))
   }, [category, minCases])
 
@@ -44,14 +44,16 @@ export default function RankingsView({ category }: { category: Category }) {
               <option key={n} value={n}>{n === 0 ? 'Any' : `${n}+`}</option>
             ))}
           </select>
-          {data && !data.hasCaseCounts && (
-            <span className="text-gray-400">CMS publishes no case counts for this measure.</span>
-          )}
+          <span className="text-gray-400">
+            {data && !data.hasCaseCounts
+              ? "Not available: CMS doesn't publish patient counts for this measure."
+              : 'Hides small hospitals, whose scores can land at the top or bottom by luck.'}
+          </span>
         </div>
 
         {loading && !data && (
           <p className="text-center text-gray-400 py-16">
-            Loading... please hold (much like a hospital waiting room)
+            Loading rankings…
           </p>
         )}
         {error && <p className="text-center text-red-500 py-16">{error}</p>}

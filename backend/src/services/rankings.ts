@@ -18,6 +18,8 @@ export interface MeasureRanking {
   unit: string
   hasCaseCounts: boolean
   minCases: number
+  nationalMedian: number
+  scoredHospitals: number
   released: string | null
   periodStart: string | null
   periodEnd: string | null
@@ -71,9 +73,15 @@ export async function getRanking(category: string, minCases = 0): Promise<Measur
     ORDER BY s.score ${direction}, s.denominator DESC NULLS LAST, h.name
     LIMIT 5`
   const params = [measure.measure_id, release.release_id, effectiveMinCases]
-  const [top, bottom] = await Promise.all([
+  const [top, bottom, context] = await Promise.all([
     pool.query<RankedHospital>(ranked(measure.higher_is_better ? 'DESC' : 'ASC'), params),
     pool.query<RankedHospital>(ranked(measure.higher_is_better ? 'ASC' : 'DESC'), params),
+    // The typical hospital, across everyone CMS scored, to frame the extremes.
+    pool.query<{ national_median: number; scored_hospitals: number }>(
+      `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY score) AS national_median, count(*)::int AS scored_hospitals
+       FROM measure_scores WHERE measure_id = $1 AND release_id = $2 AND score IS NOT NULL`,
+      [measure.measure_id, release.release_id]
+    ),
   ])
 
   return {
@@ -85,6 +93,8 @@ export async function getRanking(category: string, minCases = 0): Promise<Measur
     released: release.released,
     periodStart: release.period_start,
     periodEnd: release.period_end,
+    nationalMedian: context.rows[0].national_median,
+    scoredHospitals: context.rows[0].scored_hospitals,
     top5: top.rows,
     bottom5: bottom.rows,
   }
