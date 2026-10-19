@@ -1,0 +1,33 @@
+name: Ingest CDC strain data
+
+# Weekly CDC NHSN state hospital respiratory data. CDC publishes on Fridays;
+# the job skips the download when the dataset hasn't changed.
+on:
+  schedule:
+    - cron: '0 14 * * 6' # 14:00 UTC every Saturday
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Reload even if CDC hasn't updated
+        type: boolean
+        default: false
+
+concurrency:
+  group: ingest-strain
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run migrate --workspace=backend
+      - run: npm run ingest:strain --workspace=backend -- ${{ inputs.force && '--force' || '' }}
