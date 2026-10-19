@@ -8,7 +8,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "ingest": "tsx src/ingest/index.ts",
     "ingest:strain": "tsx src/ingest/strain.ts",
-    "ingest:spend": "tsx src/ingest/spend.ts"
+    "ingest:spend": "tsx src/ingest/spend.ts",
+    "analyze": "tsx src/analysis/index.ts"
   },
   "dependencies": {
     "axios": "^1.6.0",

@@ -36,14 +36,39 @@ GitHub Actions (monthly) ──► ingest job ──► Neon Postgres ◄── 
 - CDC's weekly hospital data has a hole: federal reporting requirements lapsed from May to October 2024, and only about 37% of hospitals reported voluntarily. Each week is stored with its reporting coverage and period instead of being silently dropped. That matters because about a quarter of the readmissions measure's window falls in that period, compared with 8% for ER wait times.
 - Medicare spending uses CMS's price-standardized payments, which remove regional wage and price differences. That changes the picture: Alaska spends $12,050 per beneficiary in actual dollars but $9,209 standardized. The figures cover Original Medicare only, so states with heavy Medicare Advantage enrollment are flagged. Puerto Rico is 96% Medicare Advantage, which leaves its fee-for-service figures unrepresentative.
 
+## Findings: strain, spending and outcomes
+
+Analysis run 1 covers the CMS releases of August and September 2026 and compares the 50 states and DC. Each outcome is compared with strain and spending averaged over **that measure's own reporting window**. The results below are the associations that survive a 5% false-discovery-rate correction (Benjamini–Hochberg across all 25 tests), after controlling for each state's share of dual-eligible (low-income) beneficiaries.
+
+| Outcome (state average) | Associated with | Partial r | FDR q |
+|---|---|---|---|
+| Longer ER stays (`OP_18b`) | Higher ICU occupancy | +0.43 | 0.021 |
+| Longer ER stays (`OP_18b`) | Higher inpatient occupancy | +0.39 | 0.024 |
+| More heart failure readmissions (`READM_30_HF`) | Higher ICU occupancy | +0.38 | 0.024 |
+| More heart failure readmissions | Higher inpatient Medicare spending | +0.59 | < 0.001 |
+| More heart failure readmissions | Higher total Medicare spending | +0.39 | 0.024 |
+| Lower nurse-communication ratings (HCAHPS) | Higher total Medicare spending | −0.41 | 0.023 |
+
+Heart attack mortality and the PSI 90 safety composite showed no association with strain or spending that survives the correction.
+
+**How to read this.** These are associations across 51 states, not causal effects, and states differ in many ways the analysis can't see. Part of the readmissions–inpatient spending link is mechanical, because readmissions *are* inpatient stays. Four other associations looked significant on their own (95% CI excluding zero) but didn't survive the multiple-comparison correction, which is why the correction is applied.
+
+### Method
+
+- **State outcome:** each hospital's score weighted by its case count. PSI 90 publishes no case counts, so it uses a plain average.
+- **Strain:** CDC weekly occupancy and COVID + flu admissions per 100 beds, averaged over the measure window. Weeks are skipped when fewer than half of a state's hospitals reported or occupancy is above 100%, which removes most of the voluntary-reporting period in 2024.
+- **Spending:** Medicare price-standardized spend per Original Medicare beneficiary, weighted by how much of each year falls inside the window. The spending file ends in 2024, so windows that run into 2025 rely on 2024 figures. State spending is very stable year to year (r ≥ 0.987 every year since 2018), which makes that a safe assumption.
+- **Statistics:** Pearson r with Fisher-z confidence intervals, Spearman ρ, partial r, and Benjamini–Hochberg q-values, all computed in SQL and checked against an independent implementation. Results are stored as snapshots whenever an input changes, because CDC revises past weeks.
+
 ## Roadmap (in progress)
 
 - [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
 - [ ] **Statistical rigor.** Confidence intervals, minimum case volumes and tie handling, so small hospitals don't top the rankings by chance.
 - [x] **Hospital strain ingestion.** Weekly CDC NHSN state hospital respiratory data (occupancy, ICU, COVID/flu/RSV admissions) from August 2020 on, loaded weekly with reporting coverage.
-- [ ] **Strain vs. outcomes.** Average strain over each CMS measure's own reporting window, weighted by coverage, to see how system strain relates to outcomes.
+- [x] **Strain vs. outcomes.** Strain averaged over each CMS measure's own reporting window, with coverage-filtered weeks (see Findings).
 - [x] **Spending ingestion.** Medicare spending per beneficiary by state for 2014–2024, in actual and price-standardized dollars, plus Medicare Advantage share and dual-eligible share.
-- [ ] **Spend vs. outcomes.** Compare price-standardized spending against outcomes over each measure's window.
+- [x] **Spend vs. outcomes.** Price-standardized spending compared against outcomes over each measure's window (see Findings).
+- [ ] **Show the analysis in the app.** State map, strain and spending scatter plots, and each hospital's percentile within its state.
 - [ ] **Hospital explorer.** Search, per-hospital detail pages, and comparisons within each state.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [ ] Tests, CI and a public deployment.
@@ -59,6 +84,7 @@ npm run migrate --workspace=backend
 npm run ingest --workspace=backend     # pulls current CMS releases (~15s)
 npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
 npm run ingest:spend --workspace=backend   # pulls Medicare spending by state (~3s)
+npm run analyze --workspace=backend        # snapshots the strain/spend analysis (~2s)
 npm run dev                            # backend on :3001, frontend on :5173
 ```
 
