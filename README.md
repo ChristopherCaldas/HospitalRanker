@@ -33,12 +33,14 @@ GitHub Actions (monthly) ──► ingest job ──► Neon Postgres ◄── 
 
 - CMS suppressed the hospital-wide readmission measure (`Hybrid_HWR`) for every hospital in its September 2026 release. The ingestion run flags this, and the readmissions category now uses the heart failure readmission rate. `Hybrid_HWR` is still ingested in case it comes back.
 - Measure windows differ: mortality covers 3 years, safety 2, and ER times and patient surveys 1. All of them lag the release date.
+- CDC's weekly hospital data has a hole: federal reporting requirements lapsed from May to October 2024, and only about 37% of hospitals reported voluntarily. Each week is stored with its reporting coverage and period instead of being silently dropped. That matters because about a quarter of the readmissions measure's window falls in that period, compared with 8% for ER wait times.
 
 ## Roadmap (in progress)
 
 - [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
 - [ ] **Statistical rigor.** Confidence intervals, minimum case volumes and tie handling, so small hospitals don't top the rankings by chance.
-- [ ] **Hospital strain.** Weekly CDC NHSN state hospital respiratory data, averaged over each CMS measure's own reporting window, to see how system strain relates to outcomes.
+- [x] **Hospital strain ingestion.** Weekly CDC NHSN state hospital respiratory data (occupancy, ICU, COVID/flu/RSV admissions) from August 2020 on, loaded weekly with reporting coverage.
+- [ ] **Strain vs. outcomes.** Average strain over each CMS measure's own reporting window, weighted by coverage, to see how system strain relates to outcomes.
 - [ ] **Spending.** Medicare spending per beneficiary by state, adjusted for regional prices, compared against outcomes.
 - [ ] **Hospital explorer.** Search, per-hospital detail pages, and comparisons within each state.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
@@ -53,6 +55,7 @@ npm install
 neon env pull                          # or create .env.local with DATABASE_URL and DATABASE_URL_UNPOOLED
 npm run migrate --workspace=backend
 npm run ingest --workspace=backend     # pulls current CMS releases (~15s)
+npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
 npm run dev                            # backend on :3001, frontend on :5173
 ```
 
@@ -64,6 +67,7 @@ npm run dev                            # backend on :3001, frontend on :5173
 
 ## Data sources
 
-- [CMS Provider Data Catalog](https://data.cms.gov/provider-data/), Hospitals: Timely and Effective Care, Complications and Deaths, HCAHPS, Unplanned Hospital Visits.
+- [CMS Provider Data Catalog](https://data.cms.gov/provider-data/), Hospitals: Timely and Effective Care, Complications and Deaths, HCAHPS, Unplanned Hospital Visits, Hospital General Information.
+- [CDC NHSN Weekly Hospital Respiratory Data by Jurisdiction](https://data.cdc.gov/d/ua7e-t2fy).
 
 CMS publishes these measures roughly quarterly, and many cover multi-year windows that lag the release date. Rankings describe past performance; they aren't medical advice. The quips are jokes.

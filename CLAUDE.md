@@ -38,6 +38,7 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - `db/pool.ts` — shared `pg` Pool on the pooled `DATABASE_URL` (Neon) for request traffic
 - `db/migrate.ts` — applies `backend/migrations/*.sql` in order over `DATABASE_URL_UNPOOLED`; `npm run migrate --workspace=backend`
 - `ingest/` — release-aware CMS ingestion; `npm run ingest --workspace=backend` (`-- --force` to redo current releases). Reads each dataset's metastore entry, skips CSVs already ingested for every wanted measure, otherwise downloads the CSV and stores it in one transaction. `datasets.ts` maps each dataset's CSV columns; `retry.ts` backs off on CMS 503s and HTML error pages.
+- `ingest/strain.ts` — CDC NHSN weekly state respiratory data (`ua7e-t2fy`); `npm run ingest:strain --workspace=backend`. Upserts the full series (CDC revises past weeks); skipped when the dataset's `rowsUpdatedAt` matches the last load in `source_loads`.
 
 ### Database (Postgres on Neon)
 - `cms_releases` — one row per dataset CSV (the download URL is the release identity), with status and the measures ingested
@@ -45,9 +46,13 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - `measures` — which measures to ingest, their app category, direction and unit. **Drives ingestion.**
 - `measure_scores` — hospital × measure × release, with CI bounds, denominator, compared-to-national, footnote and the measure's own start/end dates. Unavailable scores are kept with a NULL score.
 - `latest_measure_scores` (view) — scores from each dataset's newest complete release
+- `state_weekly_strain` — CDC weekly occupancy / ICU / COVID-flu-RSV admissions per jurisdiction (states, territories, `USA`, HHS regions), with per-metric `pct_*_coverage` (percent of hospitals reporting) and `reporting_period`. **May–Oct 2024 is `voluntary_2024`: ~37% national coverage**, so counts aren't comparable and percentages come from a self-selected subset. ~40 rows report occupancy >100%; kept raw, filter in analysis.
+- `source_loads` — which upstream version of a non-CMS source was loaded, and when
 
 ### Scheduled ingestion
-`.github/workflows/ingest.yml` runs migrate + ingest monthly and on manual dispatch (optionally forced). Needs the `DATABASE_URL_UNPOOLED` repo secret.
+Both need the `DATABASE_URL_UNPOOLED` repo secret and run migrate first.
+- `.github/workflows/ingest.yml` — CMS, monthly (1st) + manual dispatch (optionally forced)
+- `.github/workflows/ingest-strain.yml` — CDC, weekly (Saturday) + manual dispatch
 
 ### Frontend (`frontend/src/`)
 - `App.tsx` — tab state, API fetching, top-level layout
