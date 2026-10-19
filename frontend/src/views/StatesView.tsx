@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import type { Category, Correlation, Factor, StateAnalysis, StateRow } from '../types'
-import { CATEGORIES, FACTORS, formatMonth, formatValue } from '../lib/format'
+import { CATEGORIES, FACTORS, MEASURE_GUIDE, correlationStrength, formatMonth, formatValue } from '../lib/format'
 import { DIVERGING_STEPS, SEQUENTIAL_STEPS, divergingColor, sequentialColor } from '../lib/colors'
 import { href } from '../lib/router'
 import TabNav from '../components/TabNav'
 import TileMap from '../components/TileMap'
 import Scatter from '../components/Scatter'
+import HowToRead from '../components/HowToRead'
 
 const FDR = 0.05
 // Lowercase for mid-sentence use, leaving acronyms like 'ER' intact.
@@ -15,12 +16,14 @@ const fmtR = (r: number | null) => (r === null ? '—' : (r >= 0 ? '+' : '−') 
 
 // "States with higher ICU occupancy tend to have worse ER wait times."
 function finding(c: Correlation, factorNoun: string, outcomeLabel: string, higherIsBetter: boolean): string {
-  if (c.partialR === null || c.partialQ === null || c.partialQ >= FDR) {
-    return `No reliable association between ${factorNoun} and ${midSentence(outcomeLabel)} once multiple comparisons are accounted for.`
+  if (!holdsUp(c)) {
+    return `No reliable link between ${factorNoun} and ${midSentence(outcomeLabel)}: the pattern is small enough that it could be chance.`
   }
-  const better = (c.partialR > 0) === higherIsBetter
-  return `States with higher ${factorNoun} tend to have ${better ? 'better' : 'worse'} ${midSentence(outcomeLabel)}.`
+  return `States with higher ${factorNoun} tend to have ${worseWhenHigher(c, higherIsBetter) ? 'worse' : 'better'} ${midSentence(outcomeLabel)}.`
 }
+
+const holdsUp = (c: Correlation) => c.partialR !== null && c.partialQ !== null && c.partialQ < FDR
+const worseWhenHigher = (c: Correlation, higherIsBetter: boolean) => ((c.partialR ?? c.r) > 0) !== higherIsBetter
 
 export default function StatesView({ category }: { category: Category }) {
   const [data, setData] = useState<StateAnalysis | null>(null)
@@ -77,7 +80,7 @@ export default function StatesView({ category }: { category: Category }) {
           <strong className="text-gray-900">{formatValue(value(s), f.unit)}</strong>
         </div>
         <div className="text-gray-400">
-          {s.hospitals} hospitals{s.cases ? ` · ${Math.round(s.cases).toLocaleString('en-US')} cases` : ''}
+          {s.hospitals} hospitals{s.cases && MEASURE_GUIDE[category]?.caseNoun ? ` · ${Math.round(s.cases).toLocaleString('en-US')} ${MEASURE_GUIDE[category].caseNoun}` : ''}
         </div>
       </div>
     )
@@ -98,11 +101,17 @@ export default function StatesView({ category }: { category: Category }) {
           <div className={`space-y-6 ${loading ? 'opacity-60' : ''} transition-opacity`}>
             <div>
               <h2 className="text-xl font-semibold text-gray-800">{data.label}: how states compare</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Each state's case-weighted average for {data.measureId} ({direction}), set against hospital strain and
-                Medicare spending averaged over the same period the scores cover:{' '}
-                {formatMonth(data.windowStart)} – {formatMonth(data.windowEnd)}. 50 states + DC.
+              <p className="text-sm text-gray-600 mt-1">
+                Do states whose hospitals are more crowded, or where Medicare spends more, get better or worse results?
+                Each state's score is the average of its hospitals, with busier hospitals counting for more ({direction}).
+                Crowding and spending are measured over the same period the scores cover,{' '}
+                {formatMonth(data.windowStart)} – {formatMonth(data.windowEnd)}, for all 50 states plus DC.
               </p>
+              {MEASURE_GUIDE[category] && (
+                <p className="text-xs text-gray-500 mt-2">
+                  <span className="font-medium text-gray-600">The score:</span> {MEASURE_GUIDE[category].score}
+                </p>
+              )}
             </div>
 
             {/* Filters: one row above everything they scope. */}
@@ -114,6 +123,7 @@ export default function StatesView({ category }: { category: Category }) {
                   type="button"
                   onClick={() => setFactor(x.id)}
                   aria-pressed={factor === x.id}
+                  title={x.description}
                   className={`px-3 py-1 rounded-full border ${
                     factor === x.id ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
                   }`}
@@ -122,14 +132,32 @@ export default function StatesView({ category }: { category: Category }) {
                 </button>
               ))}
             </div>
+            <p className="text-xs text-gray-500 -mt-3">
+              <span className="font-medium text-gray-600">{f.label}:</span> {f.description}
+            </p>
 
             {corr && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <p className="text-gray-800 font-medium">{finding(corr, f.noun, outcomeLabel, data.higherIsBetter)}</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Partial r = {fmtR(corr.partialR)} (95% CI {fmtR(corr.partialCiLow)} to {fmtR(corr.partialCiHigh)}),
-                  controlling for each state's dual-eligible share · FDR q = {corr.partialQ?.toFixed(3) ?? '—'} · n = {corr.n}.
-                  An association across states, not a causal effect.
+                <ul className="text-sm text-gray-600 mt-2 space-y-1">
+                  <li>
+                    <span className="text-gray-500">Strength:</span>{' '}
+                    {correlationStrength(corr.partialR)} ({fmtR(corr.partialR)} on a scale from −1 to +1, where 0 means no
+                    relationship), likely somewhere between {fmtR(corr.partialCiLow)} and {fmtR(corr.partialCiHigh)}.
+                  </li>
+                  <li>
+                    <span className="text-gray-500">Fluke check:</span>{' '}
+                    {holdsUp(corr)
+                      ? `passes (q = ${corr.partialQ!.toFixed(3)}, under the 0.05 bar), even after accounting for testing 25 comparisons at once.`
+                      : `doesn't pass (q = ${corr.partialQ?.toFixed(3) ?? '—'}, over the 0.05 bar), so with 25 comparisons tested, a pattern this size could easily be chance.`}
+                  </li>
+                  <li>
+                    <span className="text-gray-500">Already adjusted for:</span> how many low-income patients each state has,
+                    so this isn't just poorer states doing worse.
+                  </li>
+                </ul>
+                <p className="text-xs text-gray-400 mt-2">
+                  A pattern across {corr.n} states, not proof that one causes the other.
                 </p>
               </div>
             )}
@@ -138,9 +166,10 @@ export default function StatesView({ category }: { category: Category }) {
               <section className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <h3 className="text-sm font-semibold text-gray-700">
-                    {colorBy === 'outcome' ? `${outcomeLabel} vs national` : f.label}
+                    {colorBy === 'outcome' ? `${outcomeLabel} compared with the national average` : `${f.label}, by state`}
                   </h3>
-                  <div className="flex text-xs border border-gray-300 rounded-md overflow-hidden" role="group" aria-label="Color map by">
+                  <div className="flex items-center text-xs border border-gray-300 rounded-md overflow-hidden shrink-0" role="group" aria-label="Color map by">
+                    <span className="px-2 text-gray-500 bg-gray-50 self-stretch flex items-center border-r border-gray-300">Color by</span>
                     {(['outcome', 'factor'] as const).map(c => (
                       <button
                         key={c}
@@ -162,16 +191,20 @@ export default function StatesView({ category }: { category: Category }) {
                   label={`Tile map of states colored by ${colorBy === 'outcome' ? outcomeLabel : f.label}`}
                   legend={
                     colorBy === 'outcome' ? (
-                      <Legend steps={DIVERGING_STEPS} left="Worse than national" right="Better" />
+                      <Legend steps={DIVERGING_STEPS} left="Worse than national" right="Better than national" />
                     ) : (
-                      <Legend steps={SEQUENTIAL_STEPS} left="Lower" right="Higher" />
+                      <Legend steps={SEQUENTIAL_STEPS} left={`Lower ${f.noun}`} right="Higher" />
                     )
                   }
                 />
               </section>
 
               <section className="bg-white border border-gray-200 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">One dot per state</h3>
+                <h3 className="text-sm font-semibold text-gray-700">Each dot is a state</h3>
+                <p className="text-xs text-gray-500 mb-3">
+                  The gray line is the overall trend; a steeper line means a stronger link. Labeled states are the
+                  furthest from the trend. Hover a dot or a map tile for its numbers.
+                </p>
                 <Scatter
                   points={data.states
                     .filter(s => s.hospitals >= 3 && value(s) !== null)
@@ -190,22 +223,24 @@ export default function StatesView({ category }: { category: Category }) {
             </div>
 
             <section className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
-              <h3 className="text-sm font-semibold text-gray-700 px-4 pt-4">All factors for {midSentence(outcomeLabel)}</h3>
+              <h3 className="text-sm font-semibold text-gray-700 px-4 pt-4">Everything we compared {midSentence(outcomeLabel)} against</h3>
+              <p className="text-xs text-gray-500 px-4 mt-1">Click a row to chart it. The terms are explained below the table.</p>
               <table className="w-full text-sm mt-2">
                 <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
                   <tr>
-                    <th className="px-4 py-2 text-left">Factor</th>
-                    <th className="px-4 py-2 text-right">r</th>
-                    <th className="px-4 py-2 text-right">Partial r (95% CI)</th>
-                    <th className="px-4 py-2 text-right">FDR q</th>
-                    <th className="px-4 py-2 text-left">Verdict</th>
+                    <th className="px-4 py-2 text-left">Compared with</th>
+                    <th className="px-4 py-2 text-left">Direction</th>
+                    <th className="px-4 py-2 text-right" title="Correlation after adjusting for low-income patients, from −1 to +1">Strength</th>
+                    <th className="px-4 py-2 text-right" title="95% confidence interval for the adjusted correlation">Likely range</th>
+                    <th className="px-4 py-2 text-right" title="False-discovery-rate q-value; under 0.05 passes">Fluke check (q)</th>
+                    <th className="px-4 py-2 text-left">Holds up?</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 tabular-nums">
                   {FACTORS.map(x => {
                     const c = data.correlations.find(k => k.factor === x.id)
                     if (!c) return null
-                    const sig = c.partialQ !== null && c.partialQ < FDR
+                    const sig = holdsUp(c)
                     return (
                       <tr
                         key={x.id}
@@ -213,16 +248,19 @@ export default function StatesView({ category }: { category: Category }) {
                         className={`cursor-pointer hover:bg-gray-50 ${factor === x.id ? 'bg-blue-50/50' : ''}`}
                       >
                         <td className="px-4 py-2 text-gray-800">{x.short}</td>
-                        <td className="px-4 py-2 text-right text-gray-600">{fmtR(c.r)}</td>
-                        <td className="px-4 py-2 text-right text-gray-800">
-                          {fmtR(c.partialR)} <span className="text-gray-400">({fmtR(c.partialCiLow)}, {fmtR(c.partialCiHigh)})</span>
+                        <td className={`px-4 py-2 ${sig ? 'text-gray-700' : 'text-gray-400'}`}>
+                          Higher → {worseWhenHigher(c, data.higherIsBetter) ? 'worse' : 'better'}
                         </td>
+                        <td className="px-4 py-2 text-right text-gray-800">
+                          {fmtR(c.partialR)} <span className="text-gray-400">{correlationStrength(c.partialR)}</span>
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-500">{fmtR(c.partialCiLow)} to {fmtR(c.partialCiHigh)}</td>
                         <td className="px-4 py-2 text-right text-gray-600">{c.partialQ?.toFixed(3) ?? '—'}</td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-2 whitespace-nowrap">
                           {sig ? (
-                            <span className="text-green-800">✔ Survives FDR 5%</span>
+                            <span className="text-green-800">✔ Yes</span>
                           ) : (
-                            <span className="text-gray-400">– Not reliable</span>
+                            <span className="text-gray-400">– Could be chance</span>
                           )}
                         </td>
                       </tr>
@@ -231,6 +269,36 @@ export default function StatesView({ category }: { category: Category }) {
                 </tbody>
               </table>
             </section>
+
+            <HowToRead
+              open
+              items={[
+                {
+                  term: 'Direction',
+                  text: `What tends to happen to ${midSentence(outcomeLabel)} in states where the factor is higher. Gray means the pattern didn't hold up, so the direction shouldn't be trusted.`,
+                },
+                {
+                  term: 'Strength',
+                  text: 'A correlation, from −1 to +1. 0 means no relationship; ±1 means the two move in perfect lockstep. Roughly: under 0.3 is weak, 0.3–0.5 moderate, above 0.5 strong. The sign only says which way the numbers move together; "Direction" translates it into better or worse.',
+                },
+                {
+                  term: 'Adjusted',
+                  text: 'Poorer populations tend to have worse health outcomes regardless of their hospitals. To avoid mistaking that for a crowding or spending effect, every strength is adjusted for each state\'s share of patients on both Medicare and Medicaid, a standard stand-in for low income.',
+                },
+                {
+                  term: 'Likely range',
+                  text: "With only 51 states, the strength is an estimate. This is its 95% confidence interval: the true value very likely lies inside. If the range crosses 0, there may be no relationship at all. The range treats each comparison on its own, so a range that stays clear of 0 can still fail the stricter fluke check.",
+                },
+                {
+                  term: 'Fluke check (q)',
+                  text: 'We tested 25 combinations (5 outcomes × 5 factors). Test that many and one or two will look impressive purely by chance. The q-value (a false-discovery-rate correction) accounts for that; below 0.05 means the pattern holds up even so.',
+                },
+                {
+                  term: 'Holds up?',
+                  text: '"Yes" when the fluke check passes. It still means "these tend to go together," not "one causes the other."',
+                },
+              ]}
+            />
 
             <details className="bg-white border border-gray-200 rounded-lg">
               <summary className="px-4 py-3 text-sm font-semibold text-gray-700 cursor-pointer">Data table (all states)</summary>
@@ -242,7 +310,9 @@ export default function StatesView({ category }: { category: Category }) {
                       <th className="px-4 py-2 text-right">Hospitals</th>
                       <th className="px-4 py-2 text-right">{outcomeLabel}</th>
                       {FACTORS.map(x => <th key={x.id} className="px-4 py-2 text-right">{x.short}</th>)}
-                      <th className="px-4 py-2 text-right">Weeks used</th>
+                      <th className="px-4 py-2 text-right" title="Weeks with reliable CDC reporting (at least half of the state's hospitals reporting), out of the weeks in the period">
+                        Weeks of CDC data
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 tabular-nums">
@@ -263,8 +333,9 @@ export default function StatesView({ category }: { category: Category }) {
             </details>
 
             <p className="text-xs text-gray-400">
-              Analysis run {data.runId} · strain weeks with under half of a state's hospitals reporting are excluded ·
-              spend is price-standardized Medicare FFS spend per beneficiary · see the README for full method.
+              Weeks when fewer than half of a state's hospitals reported to the CDC are left out; that mostly affects
+              mid-2024, when reporting was voluntary. Spending covers traditional Medicare only. Full method in the
+              project README. Analysis run {data.runId}.
             </p>
           </div>
         )}

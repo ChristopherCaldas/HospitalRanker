@@ -44,9 +44,11 @@ export default function RankingsView({ category }: { category: Category }) {
               <option key={n} value={n}>{n === 0 ? 'Any' : `${n}+`}</option>
             ))}
           </select>
-          {data && !data.hasCaseCounts && (
-            <span className="text-gray-400">CMS publishes no case counts for this measure.</span>
-          )}
+          <span className="text-gray-400">
+            {data && !data.hasCaseCounts
+              ? "Not available: CMS doesn't publish patient counts for this measure."
+              : 'Hides small hospitals, whose scores can land at the top or bottom by luck.'}
+          </span>
         </div>
 
         {loading && !data && (

@@ -26,7 +26,7 @@ export default function App() {
             <h1 className="text-2xl font-bold text-gray-900">
               <a href={href('rankings')}>🏥 HospitalRanker</a>
             </h1>
-            <p className="text-sm text-gray-500 mt-1">Serious data. Questionable commentary.</p>
+            <p className="text-sm text-gray-500 mt-1">The report card hospitals didn't ask for, built from public CMS and CDC data.</p>
           </div>
           <nav className="flex gap-1" aria-label="Sections">
             {SECTIONS.map(s => (

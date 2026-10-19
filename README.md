@@ -1,6 +1,6 @@
 # 🏥 HospitalRanker
 
-*Serious data. Questionable commentary.*
+*The report card hospitals didn't ask for, built from public CMS and CDC data.*
 
 HospitalRanker ranks US hospitals on public CMS quality measures, showing the best and worst five in each category along with a quip about each. Underneath the jokes, it's a data project: ingesting federal healthcare datasets that are messy, slow to download and released on irregular schedules, then modeling them so they can be compared honestly.
 
