@@ -61,6 +61,11 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - Spend data ends 2024, so 1-year windows ending Sep 2025 (OP_18b, HCAHPS) have spend for 25% of the window; justified because state standardized spend correlates ≥0.987 year over year.
 - Statistics were cross-checked against an independent JS implementation (r, rho, partial r, BH q all match).
 
+### Deployment (Vercel)
+- `vercel.json` builds the frontend and rewrites `/api/*` to `api/index.ts`, which re-exports `backend/src/app.ts` (the Express app; `index.ts` only adds `listen` for local dev). `db/pool.ts` calls `attachDatabasePool` when `VERCEL` is set.
+- Production `DATABASE_URL` is the **read-only `app_readonly` role** (pooled). Create/rotate it with `npm run create-readonly-role --workspace=backend` (writes `APP_READONLY_DATABASE_URL` to `.env.local`; password never printed or committed). Grants: `migrations/007_app_readonly.sql` (no-op if the role doesn't exist). It's created in SQL because Neon CLI/console roles join `neon_superuser`.
+- Tests: `npm test` (backend vitest 5 incl. PGlite SQL tests; frontend vitest 3), `npm run typecheck` (includes `backend/test` via `backend/tsconfig.test.json`). CI: `.github/workflows/ci.yml`.
+
 ### Scheduled ingestion
 Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyze` last.
 - `.github/workflows/ingest.yml` — CMS hospital measures + Medicare spend, monthly (1st) + manual dispatch (optionally forced)

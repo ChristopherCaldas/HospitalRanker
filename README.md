@@ -2,6 +2,8 @@
 
 *The report card hospitals didn't ask for, built from public CMS and CDC data.*
 
+**Live site: [hospital-ranker.vercel.app](https://hospital-ranker.vercel.app)** · [![CI](https://github.com/ChristopherCaldas/HospitalRanker/actions/workflows/ci.yml/badge.svg)](https://github.com/ChristopherCaldas/HospitalRanker/actions/workflows/ci.yml)
+
 HospitalRanker ranks US hospitals on public CMS quality measures and asks whether hospital crowding and Medicare spending go along with better or worse results. It's a data project at heart: ingesting federal healthcare datasets that are messy, slow to download and released on irregular schedules, then modeling them so they can be compared honestly and explained to someone without a healthcare-data background.
 
 ## What it shows today
@@ -71,11 +73,12 @@ Heart attack mortality and the PSI 90 safety composite showed no association wit
 - [x] **Show the analysis in the app.** A States view with an equal-area tile map, a strain or spending scatter plot with its fit line, a plain-language finding, and the full correlation table.
 - [x] **Hospital explorer.** Search, plus a page per hospital showing every measure with its percentile within its state and nationally, and the state and national medians.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
-- [ ] Tests, CI and a public deployment.
+- [x] **Tests and CI.** Unit, API and SQL integration tests; the SQL tests run every migration on in-process Postgres 18 and check the statistics against an independent implementation. CI runs on every PR.
+- [x] **Public deployment** on Vercel. The static frontend is served from the CDN, the Express API runs as a serverless function, and it connects as a read-only database role.
 
 ## Running locally
 
-Requires Node 20+ and a Postgres database (the project uses Neon).
+Requires Node 24 and a Postgres database (the project uses Neon).
 
 ```bash
 npm install
@@ -86,7 +89,14 @@ npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
 npm run ingest:spend --workspace=backend   # pulls Medicare spending by state (~3s)
 npm run analyze --workspace=backend        # snapshots the strain/spend analysis (~2s)
 npm run dev                            # backend on :3001, frontend on :5173
+npm test                               # unit, API and SQL tests (SQL runs on in-process Postgres)
 ```
+
+## Deployment
+
+- **Vercel** builds the frontend (`frontend/dist`, served from the CDN) and runs `api/index.ts`, the same Express app as local dev, as a serverless function. `vercel.json` rewrites `/api/*` to it.
+- **Read-only database access.** The deployed API connects as `app_readonly`, a role that can only `SELECT`. It's created once with `npm run create-readonly-role --workspace=backend`, which generates the password and writes the connection string to `.env.local`, never to git. That connection string is set as Vercel's `DATABASE_URL`. Its grants are versioned in `backend/migrations/007_app_readonly.sql`.
+- **Ingestion and migrations** run from GitHub Actions with the owner role, never from the public site.
 
 ## Project history
 
