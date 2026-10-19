@@ -2,6 +2,8 @@
 
 *The report card hospitals didn't ask for, built from public CMS and CDC data.*
 
+**Live site: [hospital-ranker.vercel.app](https://hospital-ranker.vercel.app)** · [![CI](https://github.com/ChristopherCaldas/HospitalRanker/actions/workflows/ci.yml/badge.svg)](https://github.com/ChristopherCaldas/HospitalRanker/actions/workflows/ci.yml)
+
 HospitalRanker ranks US hospitals on public CMS quality measures and asks whether hospital crowding and Medicare spending go along with better or worse results. It's a data project at heart: ingesting federal healthcare datasets that are messy, slow to download and released on irregular schedules, then modeling them so they can be compared honestly and explained to someone without a healthcare-data background.
 
 ## What it shows today
