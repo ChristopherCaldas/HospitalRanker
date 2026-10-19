@@ -32,7 +32,7 @@ export interface CMSRecord {
 
 export async function fetchMeasure(category: string): Promise<CMSRecord[]> {
   const cacheKey = `cms_${category}`
-  const cached = getCached<CMSRecord[]>(cacheKey)
+  const cached = await getCached<CMSRecord[]>(cacheKey)
   if (cached) return cached
 
   const measure = MEASURE_MAP[category]
@@ -71,6 +71,6 @@ export async function fetchMeasure(category: string): Promise<CMSRecord[]> {
       score: r[scoreField],
     }))
 
-  setCache(cacheKey, records)
+  await setCache(cacheKey, records)
   return records
 }

@@ -32,9 +32,13 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 ### Backend (`backend/src/`)
 - `index.ts` — Express entry point, mounts `/api/rankings` router
 - `routes/rankings.ts` — `GET /api/rankings/:category` — fetches, sorts, and returns top5/bottom5 with quips
-- `services/cms.ts` — fetches from CMS Provider Data Catalog REST API; results cached in SQLite for 24h
+- `services/cms.ts` — fetches from CMS Provider Data Catalog REST API; results cached in Postgres for 24h
 - `services/quips.ts` — returns a random funny quip for best/worst hospital per category
-- `db/cache.ts` — JSON file cache; lives in `data/cache.json` (gitignored). TTL is 24h, configurable via `CACHE_TTL_MS`.
+- `db/env.ts` — loads `.env.local` / `.env` from the repo root (written by `neon env pull`)
+- `db/pool.ts` — shared `pg` Pool on the pooled `DATABASE_URL` (Neon)
+- `db/cache.ts` — `cms_cache` table (jsonb per category). TTL is 24h, configurable via `CACHE_TTL_MS`.
+- `db/migrate.ts` — applies `backend/migrations/*.sql` in order over `DATABASE_URL_UNPOOLED`; run with `npm run migrate --workspace=backend`
+- `GET /api/health` — checks the database connection
 
 ### Frontend (`frontend/src/`)
 - `App.tsx` — tab state, API fetching, top-level layout

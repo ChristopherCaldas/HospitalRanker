@@ -3,3 +3,7 @@ dist/
 data/
 .env
 *.db
+.neon
+.env.local
+.env.local
+.env.*

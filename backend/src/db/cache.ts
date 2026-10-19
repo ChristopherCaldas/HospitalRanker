@@ -1,37 +1,20 @@
-import fs from 'fs'
-import path from 'path'
+import { pool } from './pool'
 
-const dataDir = path.join(__dirname, '../../../data')
-const cacheFile = path.join(dataDir, 'cache.json')
+const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS) || 1000 * 60 * 60 * 24 // 24 hours
 
-const CACHE_TTL_MS = 1000 * 60 * 60 * 24 // 24 hours
-
-interface CacheStore {
-  [key: string]: { value: unknown; fetchedAt: number }
+export async function getCached<T>(key: string): Promise<T | null> {
+  const { rows } = await pool.query<{ value: T }>(
+    `SELECT value FROM cms_cache
+     WHERE key = $1 AND fetched_at > now() - make_interval(secs => $2)`,
+    [key, CACHE_TTL_MS / 1000]
+  )
+  return rows[0]?.value ?? null
 }
 
-function read(): CacheStore {
-  try {
-    return JSON.parse(fs.readFileSync(cacheFile, 'utf8'))
-  } catch {
-    return {}
-  }
-}
-
-function write(store: CacheStore): void {
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true })
-  fs.writeFileSync(cacheFile, JSON.stringify(store, null, 2))
-}
-
-export function getCached<T>(key: string): T | null {
-  const store = read()
-  const entry = store[key]
-  if (!entry || Date.now() - entry.fetchedAt > CACHE_TTL_MS) return null
-  return entry.value as T
-}
-
-export function setCache(key: string, value: unknown): void {
-  const store = read()
-  store[key] = { value, fetchedAt: Date.now() }
-  write(store)
+export async function setCache(key: string, value: unknown): Promise<void> {
+  await pool.query(
+    `INSERT INTO cms_cache (key, value, fetched_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, fetched_at = EXCLUDED.fetched_at`,
+    [key, JSON.stringify(value)]
+  )
 }

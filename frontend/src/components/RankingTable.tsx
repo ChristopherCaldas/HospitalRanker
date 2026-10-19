@@ -5,7 +5,7 @@ interface Props {
   rank: 'top' | 'bottom'
 }
 
-export default function RankingTable({ hospitals, rank }: Props) {
+export default function RankingTable({ hospitals }: Props) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <table className="w-full text-sm">
