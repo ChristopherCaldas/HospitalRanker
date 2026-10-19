@@ -5,5 +5,4 @@ data/
 *.db
 .neon
 .env.local
-.env.local
 .env.*

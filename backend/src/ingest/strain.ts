@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { Client } from 'pg'
 import { requireEnv } from '../db/env'
-import { toInt, toNumber } from './parse'
+import { reportingPeriod, toInt, toNumber } from './parse'
 import { withRetry } from './retry'
 
 // Weekly CDC NHSN hospital respiratory data by jurisdiction. CDC revises past
@@ -36,13 +36,6 @@ const INTEGER_COLUMNS = new Set([
   'hospitals_reporting', 'inpatient_beds', 'inpatient_beds_occupied', 'icu_beds',
   'icu_beds_occupied', 'covid_admissions', 'flu_admissions', 'rsv_admissions',
 ])
-
-// Reporting mandate boundaries, per the dataset description.
-export function reportingPeriod(weekEnding: string): string {
-  if (weekEnding < '2024-05-01') return 'mandated_2020'
-  if (weekEnding < '2024-11-01') return 'voluntary_2024'
-  return 'mandated_2024'
-}
 
 async function fetchVersion(): Promise<string> {
   return withRetry('cdc metadata', async () => {
