@@ -63,13 +63,13 @@ Heart attack mortality and the PSI 90 safety composite showed no association wit
 ## Roadmap (in progress)
 
 - [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
-- [ ] **Statistical rigor.** Confidence intervals, minimum case volumes and tie handling, so small hospitals don't top the rankings by chance.
+- [x] **Statistical rigor in rankings.** A minimum case volume (default 25), tie-breaking by case count, and CMS's own confidence intervals and "better / worse than national" verdicts wherever CMS publishes them. In current releases that's only PSI 90.
 - [x] **Hospital strain ingestion.** Weekly CDC NHSN state hospital respiratory data (occupancy, ICU, COVID/flu/RSV admissions) from August 2020 on, loaded weekly with reporting coverage.
 - [x] **Strain vs. outcomes.** Strain averaged over each CMS measure's own reporting window, with coverage-filtered weeks (see Findings).
 - [x] **Spending ingestion.** Medicare spending per beneficiary by state for 2014–2024, in actual and price-standardized dollars, plus Medicare Advantage share and dual-eligible share.
 - [x] **Spend vs. outcomes.** Price-standardized spending compared against outcomes over each measure's window (see Findings).
-- [ ] **Show the analysis in the app.** State map, strain and spending scatter plots, and each hospital's percentile within its state.
-- [ ] **Hospital explorer.** Search, per-hospital detail pages, and comparisons within each state.
+- [x] **Show the analysis in the app.** A States view with an equal-area tile map, a strain or spending scatter plot with its fit line, a plain-language finding, and the full correlation table.
+- [x] **Hospital explorer.** Search, plus a page per hospital showing every measure with its percentile within its state and nationally, and the state and national medians.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [ ] Tests, CI and a public deployment.
 

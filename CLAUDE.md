@@ -30,9 +30,12 @@ npm run build        # builds frontend for production (from root)
 Two-package npm workspace: `frontend/` and `backend/`. No shared package — types are duplicated intentionally to keep the packages independent.
 
 ### Backend (`backend/src/`)
-- `index.ts` — Express entry point, mounts `/api/rankings` and `GET /api/health` (database check)
-- `routes/rankings.ts` — `GET /api/rankings/:category` — category metadata + quips around `services/rankings.ts`
-- `services/rankings.ts` — top/bottom 5 from the newest complete release that has scores for the category's measure (so a release where CMS suppressed it falls back to the previous one); ties break on case count, then name
+- `index.ts` — Express entry point, mounts the routers below and `GET /api/health` (database check)
+- `routes/rankings.ts` — `GET /api/rankings/:category?minCases=` — category metadata + quips around `services/rankings.ts`
+- `services/rankings.ts` — top/bottom 5 from the newest complete release that has scores for the category's measure (so a release where CMS suppressed it falls back to the previous one); ties break on case count, then name. `minCases` drops low-volume hospitals (ignored for measures without denominators, i.e. PSI_90). Rows carry CI bounds, cases and CMS's compared-to-national verdict — **in current releases only PSI_90 publishes CIs/verdicts**; MORT_30_AMI and READM_30_HF don't.
+- `routes/analysis.ts` + `services/analysis.ts` — `GET /api/analysis/:category`: latest snapshot's per-state rows, correlations (with an intercept derived from slope + means for the fit line) and a case-weighted national outcome
+- `routes/hospitals.ts` + `services/hospitals.ts` — `GET /api/hospitals?q=&state=&limit=` (name/city search) and `GET /api/hospitals/:id` (every category measure with CI, verdict, footnote, state/national percentile and medians)
+- `services/categories.ts` — `CATEGORY_META` (label, descriptions) shared by the routes
 - `services/quips.ts` — returns a random funny quip for best/worst hospital per category
 - `db/env.ts` — loads `.env.local` / `.env` from the repo root (written by `neon env pull`)
 - `db/pool.ts` — shared `pg` Pool on the pooled `DATABASE_URL` (Neon) for request traffic
@@ -65,12 +68,15 @@ Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyz
 - `.github/workflows/ingest-strain.yml` — CDC, weekly (Saturday) + manual dispatch
 
 ### Frontend (`frontend/src/`)
-- `App.tsx` — tab state, API fetching, top-level layout
-- `types.ts` — shared TypeScript interfaces (`Hospital`, `CategoryRanking`, `Category`)
-- `components/TabNav.tsx` — category tab bar
-- `components/RankingSection.tsx` — two-column best/worst layout for a category
-- `components/RankingTable.tsx` — table of 5 hospitals with name, location, score
-- `components/QuipCard.tsx` — styled italic quip banner (green for best, red for worst)
+- `App.tsx` — header + section nav; routes `#/rankings/:category`, `#/states/:category`, `#/hospitals`, `#/hospitals/:id`
+- `lib/router.ts` — tiny hash router (`useHashRoute`, `href`); `lib/format.ts` — `CATEGORIES`, `FACTORS`, value/percentile/date formatting; `lib/colors.ts` — sequential blue ramp and blue↔red diverging scale (red arm matched to blue's OKLab lightness), plus label ink-vs-white choice
+- `types.ts` — TypeScript interfaces mirroring the API responses
+- `views/RankingsView.tsx` — category tabs, min-cases filter (default 25), `RankingSection`
+- `views/StatesView.tsx` — factor picker, finding sentence (FDR q < 0.05 bar), `TileMap` + `Scatter` sharing a highlighted state, correlation table, data table
+- `views/HospitalSearchView.tsx` / `views/HospitalDetailView.tsx` — debounced search; per-measure cards with CI, verdict, medians and percentile meters
+- `components/TabNav.tsx` — category tab bar (links); `components/RankingSection.tsx` — best/worst layout; `components/RankingTable.tsx` — 5 hospitals with cases, CI and CMS verdict; `components/QuipCard.tsx` — quip banner
+- `components/TileMap.tsx` — equal-area state tile grid (every state is one data point); `components/Scatter.tsx` — one-series SVG scatter drawn at measured pixel width, 24px hit targets, fit line, collision-aware labels for the 3 largest residuals
+- Charts follow the dataviz skill's specs (thin marks, 2px rings/gaps, one series = no legend box, tooltips on hover + focus, table view). The app is light-mode only.
 
 Vite proxies `/api/*` to `localhost:3001` during development.
 
