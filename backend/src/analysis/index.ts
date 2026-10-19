@@ -1,5 +1,10 @@
 import { Client } from 'pg'
 import { requireEnv } from '../db/env'
+import { writeExpectedPerformance } from './expected'
+
+// Part of the input fingerprint: bump when the analysis method changes so the
+// next run re-computes even if no data changed.
+const METHOD_VERSION = 'expected-v1'
 
 // Freezes the *_live analysis views into a new analysis run when the inputs
 // (CMS release per measure, CDC and Medicare GV versions) differ from the
@@ -25,8 +30,9 @@ async function main() {
       SELECT jsonb_build_object(
         'releases', (SELECT jsonb_object_agg(measure_id, release_id) FROM analysis_measure_windows),
         'cdc', (SELECT max(version) FROM source_loads WHERE source = 'cdc_nhsn_hrd'),
-        'spend', (SELECT max(version) FROM source_loads WHERE source = 'cms_medicare_gv')
-      ) AS inputs`)
+        'spend', (SELECT max(version) FROM source_loads WHERE source = 'cms_medicare_gv'),
+        'method', $1::text
+      ) AS inputs`, [METHOD_VERSION])
     const { rows: [latest] } = await db.query('SELECT id, inputs FROM analysis_runs ORDER BY id DESC LIMIT 1')
 
     // jsonb equality ignores key order.
@@ -45,6 +51,7 @@ async function main() {
       const { rowCount } = await db.query(`INSERT INTO ${table} SELECT $1, * FROM ${view}`, [run.id])
       console.log(`  ${table}: ${rowCount} rows`)
     }
+    await writeExpectedPerformance(db, run.id)
     await db.query('COMMIT')
     console.log(`+ analysis run ${run.id}`)
 
