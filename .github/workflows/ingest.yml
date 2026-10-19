@@ -1,7 +1,8 @@
 name: Ingest CMS data
 
-# Monthly check for new CMS releases. The job is cheap when nothing changed:
-# it reads dataset metadata and only downloads CSVs whose release is new.
+# Monthly check for new CMS releases (hospital measures and Medicare
+# Geographic Variation spending). Cheap when nothing changed: it reads
+# metadata and only downloads releases that are new.
 on:
   schedule:
     - cron: '0 14 1 * *' # 14:00 UTC on the 1st of each month
@@ -31,3 +32,5 @@ jobs:
       - run: npm ci
       - run: npm run migrate --workspace=backend
       - run: npm run ingest --workspace=backend -- ${{ inputs.force && '--force' || '' }}
+      # Medicare Geographic Variation is yearly; the monthly check is a no-op until a new release.
+      - run: npm run ingest:spend --workspace=backend -- ${{ inputs.force && '--force' || '' }}

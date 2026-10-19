@@ -34,6 +34,7 @@ GitHub Actions (monthly) ──► ingest job ──► Neon Postgres ◄── 
 - CMS suppressed the hospital-wide readmission measure (`Hybrid_HWR`) for every hospital in its September 2026 release. The ingestion run flags this, and the readmissions category now uses the heart failure readmission rate. `Hybrid_HWR` is still ingested in case it comes back.
 - Measure windows differ: mortality covers 3 years, safety 2, and ER times and patient surveys 1. All of them lag the release date.
 - CDC's weekly hospital data has a hole: federal reporting requirements lapsed from May to October 2024, and only about 37% of hospitals reported voluntarily. Each week is stored with its reporting coverage and period instead of being silently dropped. That matters because about a quarter of the readmissions measure's window falls in that period, compared with 8% for ER wait times.
+- Medicare spending uses CMS's price-standardized payments, which remove regional wage and price differences. That changes the picture: Alaska spends $12,050 per beneficiary in actual dollars but $9,209 standardized. The figures cover Original Medicare only, so states with heavy Medicare Advantage enrollment are flagged. Puerto Rico is 96% Medicare Advantage, which leaves its fee-for-service figures unrepresentative.
 
 ## Roadmap (in progress)
 
@@ -41,7 +42,8 @@ GitHub Actions (monthly) ──► ingest job ──► Neon Postgres ◄── 
 - [ ] **Statistical rigor.** Confidence intervals, minimum case volumes and tie handling, so small hospitals don't top the rankings by chance.
 - [x] **Hospital strain ingestion.** Weekly CDC NHSN state hospital respiratory data (occupancy, ICU, COVID/flu/RSV admissions) from August 2020 on, loaded weekly with reporting coverage.
 - [ ] **Strain vs. outcomes.** Average strain over each CMS measure's own reporting window, weighted by coverage, to see how system strain relates to outcomes.
-- [ ] **Spending.** Medicare spending per beneficiary by state, adjusted for regional prices, compared against outcomes.
+- [x] **Spending ingestion.** Medicare spending per beneficiary by state for 2014–2024, in actual and price-standardized dollars, plus Medicare Advantage share and dual-eligible share.
+- [ ] **Spend vs. outcomes.** Compare price-standardized spending against outcomes over each measure's window.
 - [ ] **Hospital explorer.** Search, per-hospital detail pages, and comparisons within each state.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [ ] Tests, CI and a public deployment.
@@ -56,6 +58,7 @@ neon env pull                          # or create .env.local with DATABASE_URL 
 npm run migrate --workspace=backend
 npm run ingest --workspace=backend     # pulls current CMS releases (~15s)
 npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
+npm run ingest:spend --workspace=backend   # pulls Medicare spending by state (~3s)
 npm run dev                            # backend on :3001, frontend on :5173
 ```
 
@@ -69,5 +72,6 @@ npm run dev                            # backend on :3001, frontend on :5173
 
 - [CMS Provider Data Catalog](https://data.cms.gov/provider-data/), Hospitals: Timely and Effective Care, Complications and Deaths, HCAHPS, Unplanned Hospital Visits, Hospital General Information.
 - [CDC NHSN Weekly Hospital Respiratory Data by Jurisdiction](https://data.cdc.gov/d/ua7e-t2fy).
+- [CMS Medicare Geographic Variation, by National, State & County](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county).
 
 CMS publishes these measures roughly quarterly, and many cover multi-year windows that lag the release date. Rankings describe past performance; they aren't medical advice. The quips are jokes.
