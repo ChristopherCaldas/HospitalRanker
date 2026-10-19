@@ -1,0 +1,33 @@
+name: Ingest CMS data
+
+# Monthly check for new CMS releases. The job is cheap when nothing changed:
+# it reads dataset metadata and only downloads CSVs whose release is new.
+on:
+  schedule:
+    - cron: '0 14 1 * *' # 14:00 UTC on the 1st of each month
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Re-ingest current releases even if already stored
+        type: boolean
+        default: false
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run migrate --workspace=backend
+      - run: npm run ingest --workspace=backend -- ${{ inputs.force && '--force' || '' }}

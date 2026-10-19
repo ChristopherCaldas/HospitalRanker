@@ -12,26 +12,31 @@ HospitalRanker ranks US hospitals on public CMS quality measures, showing the be
 | 30-day mortality | `MORT_30_AMI`: risk-standardized heart attack mortality | lower |
 | Patient safety | `PSI_90`: AHRQ composite of serious in-hospital complications | lower |
 | Patient satisfaction | `H_COMP_1_STAR_RATING`: HCAHPS nurse communication stars | higher |
-| Readmissions | `Hybrid_HWR`: hospital-wide 30-day unplanned readmission rate | lower |
+| Readmissions | `READM_30_HF`: 30-day heart failure readmission rate | lower |
 
-That's about 4,200 hospitals and around 16,000 hospital-measure records after cleaning.
+Each release covers about 5,400 hospitals, and roughly 15,000 hospital-measure scores are available for ranking. Each page shows the period its scores cover and which CMS release they come from.
 
 ## Architecture
 
 ```
-CMS Provider Data Catalog API ──► Express API (TypeScript) ──► React + Tailwind UI
-                                       │
-                                       ▼
-                               Neon Postgres (pg)
+GitHub Actions (monthly) ──► ingest job ──► Neon Postgres ◄── Express API ──► React + Tailwind UI
+                                 │
+                     CMS metastore + CSV downloads
 ```
 
-- **`frontend/`**: React 18, Vite, Tailwind. Category tabs, best/worst tables, quip cards.
-- **`backend/`**: Express + TypeScript. Fetches CMS data, caches it in Postgres, sorts each measure in the right direction, and serves `/api/rankings/:category` and `/api/health`.
-- **Database**: Postgres on [Neon](https://neon.com). The app uses the pooled connection and migrations use the direct one. Migrations are plain SQL in `backend/migrations/`.
+- **Ingestion** (`backend/src/ingest/`): checks each CMS dataset's metadata and downloads its CSV only when a release hasn't been stored yet, retrying through CMS's intermittent 503 errors. Each release is written in one transaction and every release is kept, so scores can be compared over time. A full run takes about 15 seconds; a run with nothing new takes about 3.
+- **Database**: Postgres on [Neon](https://neon.com). Tables: `cms_releases`, `hospitals`, `measures` (which drives what gets ingested) and `measure_scores`, which keeps confidence intervals, case counts, CMS footnotes and each measure's own reporting window. Migrations are plain SQL in `backend/migrations/`.
+- **API** (`backend/`): Express + TypeScript. Ranks from the newest release that actually has scores for a measure, and breaks ties by case count. Serves `/api/rankings/:category` and `/api/health`.
+- **Frontend** (`frontend/`): React 18, Vite, Tailwind. Category tabs, best/worst tables, quip cards.
+
+### Data notes
+
+- CMS suppressed the hospital-wide readmission measure (`Hybrid_HWR`) for every hospital in its September 2026 release. The ingestion run flags this, and the readmissions category now uses the heart failure readmission rate. `Hybrid_HWR` is still ingested in case it comes back.
+- Measure windows differ: mortality covers 3 years, safety 2, and ER times and patient surveys 1. All of them lag the release date.
 
 ## Roadmap (in progress)
 
-- [ ] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
+- [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
 - [ ] **Statistical rigor.** Confidence intervals, minimum case volumes and tie handling, so small hospitals don't top the rankings by chance.
 - [ ] **Hospital strain.** Weekly CDC NHSN state hospital respiratory data, averaged over each CMS measure's own reporting window, to see how system strain relates to outcomes.
 - [ ] **Spending.** Medicare spending per beneficiary by state, adjusted for regional prices, compared against outcomes.
@@ -47,6 +52,7 @@ Requires Node 20+ and a Postgres database (the project uses Neon).
 npm install
 neon env pull                          # or create .env.local with DATABASE_URL and DATABASE_URL_UNPOOLED
 npm run migrate --workspace=backend
+npm run ingest --workspace=backend     # pulls current CMS releases (~15s)
 npm run dev                            # backend on :3001, frontend on :5173
 ```
 
