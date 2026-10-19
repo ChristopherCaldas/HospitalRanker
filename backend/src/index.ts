@@ -1,6 +1,8 @@
 import express from 'express'
 import cors from 'cors'
 import rankingsRouter from './routes/rankings'
+import analysisRouter from './routes/analysis'
+import hospitalsRouter from './routes/hospitals'
 import { pool } from './db/pool'
 
 const app = express()
@@ -9,6 +11,8 @@ const PORT = process.env.PORT || 3001
 app.use(cors())
 app.use(express.json())
 app.use('/api/rankings', rankingsRouter)
+app.use('/api/analysis', analysisRouter)
+app.use('/api/hospitals', hospitalsRouter)
 
 app.get('/api/health', async (_req, res) => {
   try {
