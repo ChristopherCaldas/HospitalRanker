@@ -25,7 +25,7 @@ export default function HospitalDetailView({ id }: { id: string }) {
   }, [id])
 
   if (error) return <p className="text-center text-red-500 py-16">{error}</p>
-  if (!hospital) return <p className="text-center text-gray-400 py-16">Pulling the chart…</p>
+  if (!hospital) return <p className="text-center text-gray-400 py-16">Loading hospital…</p>
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">

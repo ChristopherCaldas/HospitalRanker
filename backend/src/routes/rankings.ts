@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { getRanking } from '../services/rankings'
-import { getQuips } from '../services/quips'
 import { CATEGORY_META } from '../services/categories'
 
 const router = Router()
@@ -21,7 +20,6 @@ router.get('/:category', async (req: Request, res: Response) => {
       res.status(503).json({ error: 'No data ingested for this category yet' })
       return
     }
-    const quips = getQuips(category)
 
     res.json({
       category,
@@ -30,8 +28,8 @@ router.get('/:category', async (req: Request, res: Response) => {
       technicalDescription: meta.technicalDescription,
       top5: ranking.top5,
       bottom5: ranking.bottom5,
-      bestQuip: quips.best,
-      worstQuip: quips.worst,
+      nationalMedian: ranking.nationalMedian,
+      scoredHospitals: ranking.scoredHospitals,
       higherIsBetter: ranking.higherIsBetter,
       unit: ranking.unit,
       hasCaseCounts: ranking.hasCaseCounts,

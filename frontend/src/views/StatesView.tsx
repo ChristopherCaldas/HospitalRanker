@@ -95,7 +95,7 @@ export default function StatesView({ category }: { category: Category }) {
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {error && <p className="text-center text-red-500 py-16">{error}</p>}
-        {!data && loading && <p className="text-center text-gray-400 py-16">Crunching 50 states and DC…</p>}
+        {!data && loading && <p className="text-center text-gray-400 py-16">Loading state comparison…</p>}
 
         {data && !error && (
           <div className={`space-y-6 ${loading ? 'opacity-60' : ''} transition-opacity`}>

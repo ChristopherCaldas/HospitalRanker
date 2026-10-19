@@ -22,7 +22,7 @@ export default function RankingsView({ category }: { category: Category }) {
     axios
       .get<CategoryRanking>(`/api/rankings/${category}`, { params: { minCases } })
       .then(res => setData(res.data))
-      .catch(() => setError('Failed to load rankings. The hospitals are probably fine though.'))
+      .catch(() => setError("Couldn't load rankings. Try again in a moment."))
       .finally(() => setLoading(false))
   }, [category, minCases])
 
@@ -53,7 +53,7 @@ export default function RankingsView({ category }: { category: Category }) {
 
         {loading && !data && (
           <p className="text-center text-gray-400 py-16">
-            Loading... please hold (much like a hospital waiting room)
+            Loading rankings…
           </p>
         )}
         {error && <p className="text-center text-red-500 py-16">{error}</p>}

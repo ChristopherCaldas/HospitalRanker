@@ -1,9 +1,16 @@
-import type { Category, CategoryRanking } from '../types'
-import { COMPARISON_HELP, MEASURE_GUIDE, formatMonth } from '../lib/format'
+import type { Category, CategoryRanking, Hospital } from '../types'
+import { COMPARISON_HELP, MEASURE_GUIDE, formatMonth, formatValue } from '../lib/format'
 import { href } from '../lib/router'
 import RankingTable from './RankingTable'
-import QuipCard from './QuipCard'
 import HowToRead from './HowToRead'
+
+// "range from 6.7% to 8.6%", or "all score 5★" when the list is one tie.
+function span(hospitals: Hospital[], unit: string): string {
+  if (hospitals.length === 0) return 'have no scores'
+  const first = formatValue(hospitals[0].score, unit)
+  const last = formatValue(hospitals[hospitals.length - 1].score, unit)
+  return first === last ? `all score ${first}` : `range from ${first} to ${last}`
+}
 
 interface Props {
   data: CategoryRanking
@@ -68,16 +75,21 @@ export default function RankingSection({ data }: Props) {
         <p className="mt-2 leading-relaxed text-gray-400">{data.technicalDescription}</p>
       </details>
 
+      <p className="bg-white border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700">
+        The typical hospital scores <strong>{formatValue(data.nationalMedian, data.unit)}</strong>, the middle of{' '}
+        {data.scoredHospitals.toLocaleString('en-US')} hospitals CMS scored. The five best {span(data.top5, data.unit)};
+        the five worst {span(data.bottom5, data.unit)}.
+        {data.hasCaseCounts && ' Hospitals with the same score are ordered by number of cases.'}
+      </p>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <h3 className="text-green-600 font-semibold mb-3">🏆 Top 5 Best</h3>
-          <QuipCard quip={data.bestQuip} type="best" />
+          <h3 className="text-green-700 font-semibold mb-3">Best 5</h3>
           <RankingTable hospitals={data.top5} unit={data.unit} caseNoun={guide?.caseNoun ?? null} showCases={data.hasCaseCounts} />
         </div>
 
         <div>
-          <h3 className="text-red-500 font-semibold mb-3">💩 Bottom 5 Worst</h3>
-          <QuipCard quip={data.worstQuip} type="worst" />
+          <h3 className="text-red-700 font-semibold mb-3">Worst 5</h3>
           <RankingTable hospitals={data.bottom5} unit={data.unit} caseNoun={guide?.caseNoun ?? null} showCases={data.hasCaseCounts} />
         </div>
       </div>

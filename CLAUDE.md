@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-HospitalRanker is a humorous-but-data-driven dashboard that ranks US hospitals across several outcome categories. It pulls real data from public CMS (Centers for Medicare & Medicaid Services) APIs, caches it locally, and displays top 5 / bottom 5 rankings per category alongside a generated comedic quip.
+HospitalRanker is a data dashboard (a portfolio piece shown to recruiters) that ranks US hospitals on CMS outcome measures and compares state results with CDC hospital strain and Medicare spending. Copy is plain-language and professional with a light touch — the header tagline is the only cheeky line; the old quips and emoji were removed deliberately.
 
 ## Commands
 
@@ -31,12 +31,11 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 
 ### Backend (`backend/src/`)
 - `index.ts` — Express entry point, mounts the routers below and `GET /api/health` (database check)
-- `routes/rankings.ts` — `GET /api/rankings/:category?minCases=` — category metadata + quips around `services/rankings.ts`
+- `routes/rankings.ts` — `GET /api/rankings/:category?minCases=` — category metadata around `services/rankings.ts` (which also returns the national median and scored-hospital count for context)
 - `services/rankings.ts` — top/bottom 5 from the newest complete release that has scores for the category's measure (so a release where CMS suppressed it falls back to the previous one); ties break on case count, then name. `minCases` drops low-volume hospitals (ignored for measures without denominators, i.e. PSI_90). Rows carry CI bounds, cases and CMS's compared-to-national verdict — **in current releases only PSI_90 publishes CIs/verdicts**; MORT_30_AMI and READM_30_HF don't.
 - `routes/analysis.ts` + `services/analysis.ts` — `GET /api/analysis/:category`: latest snapshot's per-state rows, correlations (with an intercept derived from slope + means for the fit line) and a case-weighted national outcome
 - `routes/hospitals.ts` + `services/hospitals.ts` — `GET /api/hospitals?q=&state=&limit=` (name/city search) and `GET /api/hospitals/:id` (every category measure with CI, verdict, footnote, state/national percentile and medians)
 - `services/categories.ts` — `CATEGORY_META` (label, descriptions) shared by the routes
-- `services/quips.ts` — returns a random funny quip for best/worst hospital per category
 - `db/env.ts` — loads `.env.local` / `.env` from the repo root (written by `neon env pull`)
 - `db/pool.ts` — shared `pg` Pool on the pooled `DATABASE_URL` (Neon) for request traffic
 - `db/migrate.ts` — applies `backend/migrations/*.sql` in order over `DATABASE_URL_UNPOOLED`; `npm run migrate --workspace=backend`
@@ -74,7 +73,7 @@ Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyz
 - `views/RankingsView.tsx` — category tabs, min-cases filter (default 25), `RankingSection`
 - `views/StatesView.tsx` — factor picker, finding sentence (FDR q < 0.05 bar), `TileMap` + `Scatter` sharing a highlighted state, correlation table, data table
 - `views/HospitalSearchView.tsx` / `views/HospitalDetailView.tsx` — debounced search; per-measure cards with CI, verdict, medians and percentile meters
-- `components/TabNav.tsx` — category tab bar (links); `components/RankingSection.tsx` — best/worst layout; `components/RankingTable.tsx` — 5 hospitals with cases, CI and CMS verdict; `components/QuipCard.tsx` — quip banner
+- `components/TabNav.tsx` — category tab bar (links); `components/RankingSection.tsx` — score explanation, "How to read" panel, typical-hospital context line, best/worst layout; `components/RankingTable.tsx` — 5 hospitals with cases, CI and CMS verdict; `components/HowToRead.tsx` — collapsible glossary
 - `components/TileMap.tsx` — equal-area state tile grid (every state is one data point); `components/Scatter.tsx` — one-series SVG scatter drawn at measured pixel width, 24px hit targets, fit line, collision-aware labels for the 3 largest residuals
 - Charts follow the dataviz skill's specs (thin marks, 2px rings/gaps, one series = no legend box, tooltips on hover + focus, table view). The app is light-mode only.
 
@@ -96,7 +95,7 @@ Vite proxies `/api/*` to `localhost:3001` during development.
 
 1. Add a migration inserting the measure into `measures` (with its `category`). If it comes from a new dataset, add a CSV mapping to `MEASURE_DATASETS` in `backend/src/ingest/datasets.ts`
 2. Run `npm run migrate` then `npm run ingest` in `backend` — the current release is re-ingested automatically for the new measure
-3. Add metadata (label, description) to `CATEGORY_META` in `backend/src/routes/rankings.ts`
-4. Add quip arrays to `QUIPS` in `backend/src/services/quips.ts`
-5. Add the tab entry to `CATEGORIES` in `frontend/src/App.tsx`
-6. Add the type to the `Category` union in `frontend/src/types.ts`
+3. Add metadata (label, description) to `CATEGORY_META` in `backend/src/services/categories.ts`
+4. Add the tab entry to `CATEGORIES` and a plain-language entry to `MEASURE_GUIDE` in `frontend/src/lib/format.ts`
+5. Add the type to the `Category` union in `frontend/src/types.ts`
+6. Re-run `npm run analyze` so the new measure gets state comparisons

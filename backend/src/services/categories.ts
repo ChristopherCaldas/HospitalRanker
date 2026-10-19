@@ -8,7 +8,7 @@ export const CATEGORY_META: Record<string, { label: string; description: string;
   },
   mortality: {
     label: '30-Day Mortality',
-    description: '30-day mortality rate for heart attack patients. Lower is better — for obvious reasons.',
+    description: '30-day mortality rate for heart attack patients.',
     technicalDescription: 'Measure MORT_30_AMI from the CMS Complications and Deaths dataset. It reports the risk-standardized mortality rate (RSMR) for patients admitted with acute myocardial infarction, tracking deaths from any cause within 30 days of admission. CMS adjusts for patient-level risk factors including age, comorbidities, and prior hospitalizations using a hierarchical logistic regression model, so scores are comparable across hospitals with different patient populations.',
   },
   safety: {
@@ -18,12 +18,12 @@ export const CATEGORY_META: Record<string, { label: string; description: string;
   },
   satisfaction: {
     label: 'Patient Satisfaction',
-    description: 'HCAHPS star rating based on patient surveys. A rare case where the customer is always right.',
+    description: 'HCAHPS nurse-communication star rating from patient surveys.',
     technicalDescription: 'Measure H_COMP_1_STAR_RATING from the CMS HCAHPS (Hospital Consumer Assessment of Healthcare Providers and Systems) dataset. This star rating (1–5) summarises how often patients reported that nurses communicated well during their stay, derived from three standardised survey questions covering listening, explaining, and treating patients with courtesy. Survey responses are adjusted for patient mix and mode of survey administration before being converted to a star rating.',
   },
   readmission: {
     label: 'Readmission Rate',
-    description: '30-day unplanned readmission rate for heart failure patients. Lower means you fixed it the first time.',
+    description: '30-day unplanned readmission rate for heart failure patients.',
     technicalDescription: 'Measure READM_30_HF from the CMS Unplanned Hospital Visits dataset. It reports the risk-standardized rate at which Medicare patients hospitalized for heart failure are readmitted for any cause within 30 days of discharge. CMS adjusts for age, comorbidities and prior hospitalizations with a hierarchical logistic regression model, so rates are comparable across hospitals with different patient mixes. (The hospital-wide Hybrid_HWR measure used previously was suppressed by CMS in the September 2026 release.)',
   },
 }

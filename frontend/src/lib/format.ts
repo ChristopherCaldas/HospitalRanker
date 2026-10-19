@@ -1,11 +1,11 @@
 import type { Category, Factor, StateRow } from '../types'
 
 export const CATEGORIES: { id: Category; label: string }[] = [
-  { id: 'wait_times',   label: '⏱️ Wait Times' },
-  { id: 'mortality',    label: '💀 Mortality' },
-  { id: 'safety',       label: '🩺 Patient Safety' },
-  { id: 'satisfaction', label: '😊 Satisfaction' },
-  { id: 'readmission',  label: '🔄 Readmissions' },
+  { id: 'wait_times',   label: 'ER Wait Times' },
+  { id: 'mortality',    label: 'Mortality' },
+  { id: 'safety',       label: 'Patient Safety' },
+  { id: 'satisfaction', label: 'Satisfaction' },
+  { id: 'readmission',  label: 'Readmissions' },
 ]
 
 // Plain-language meaning of each category's score, for readers without a
