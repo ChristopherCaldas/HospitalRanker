@@ -2,6 +2,9 @@ import { Router } from 'express'
 import type { Request, Response } from 'express'
 import { getHospital, searchHospitals } from '../services/hospitals'
 import { getHospitalPerformance } from '../services/performance'
+import { getHistories } from '../services/history'
+import { getHospitalFinance } from '../services/finances'
+import { HOSPITAL_NOTES, US_NEWS_HONOR_ROLL } from '../content/hospitalNotes'
 
 const router = Router()
 
@@ -25,7 +28,20 @@ router.get('/:id', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Unknown hospital' })
       return
     }
-    res.json({ ...hospital, performance: await getHospitalPerformance(req.params.id) })
+    const [performance, histories, money] = await Promise.all([
+      getHospitalPerformance(req.params.id),
+      getHistories([req.params.id]),
+      getHospitalFinance(req.params.id),
+    ])
+    res.json({
+      ...hospital,
+      performance,
+      finance: money.finance,
+      context: money.context,
+      history: histories[req.params.id],
+      notes: HOSPITAL_NOTES[req.params.id] ?? [],
+      usNewsHonorRoll: US_NEWS_HONOR_ROLL.facilityIds.includes(req.params.id),
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to fetch hospital' })

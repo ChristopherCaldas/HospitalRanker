@@ -123,6 +123,81 @@ export interface HospitalDetail extends HospitalSummary {
   emergencyServices: boolean | null
   measures: HospitalMeasure[]
   performance: HospitalPerformance
+  history: HospitalHistory
+  notes: HospitalNote[]
+  usNewsHonorRoll: boolean
+  finance: HospitalFinance | null
+  context: HospitalContext | null
+}
+
+export type FinanceMetric =
+  | 'patientMargin' | 'totalMargin' | 'otherIncomeShare' | 'uncompensatedShare'
+  | 'medicaidDayShare' | 'contractLaborShare' | 'ftePerBed' | 'occupancy'
+
+// Latest Medicare cost report; shares are 0-1. Medians are national and for
+// hospitals of the same type.
+export interface HospitalFinance {
+  fiscalYearBegin: string | null
+  fiscalYearEnd: string
+  beds: number | null
+  netPatientRevenue: number | null
+  otherIncome: number | null
+  values: Record<FinanceMetric, number | null>
+  nationalMedians: Record<FinanceMetric, number | null>
+  typeMedians: Record<FinanceMetric, number | null>
+}
+
+export type ContextField =
+  | 'dualProportion' | 'dshPct' | 'caseMixIndex' | 'residentBedRatio' | 'sviPercentile' | 'poverty150Pct' | 'uninsuredPct'
+
+// What the expected-score model adjusts for, at the hospital level.
+export interface HospitalContext {
+  values: Record<ContextField, number | null> & { rural: boolean | null }
+  nationalMedians: Record<ContextField, number | null>
+}
+
+export interface FinanceOverview {
+  hospitals: number
+  firstYearEnd: string
+  lastYearEnd: string
+  patientMargin: number
+  totalMargin: number
+  losingOnPatients: number
+  losingOverall: number
+  byOwnership: {
+    ownership: string
+    hospitals: number
+    patientMargin: number | null
+    totalMargin: number | null
+    otherIncomeShare: number | null
+    uncompensatedShare: number | null
+    medicaidDayShare: number | null
+    losingOverall: number
+  }[]
+  vsPerformance: {
+    metric: FinanceMetric
+    spearman: number | null
+    fifths: { fifth: number; hospitals: number; lo: number; hi: number; avgScore: number; se: number }[]
+  }[]
+}
+
+// Yearly scores for one measure, oldest first, with the national median for
+// the same measurement period.
+export interface HistoryPoint {
+  start: string | null
+  end: string
+  score: number
+  nationalMedian: number | null
+}
+
+export type HospitalHistory = Partial<Record<Category, HistoryPoint[]>>
+
+export interface HospitalNote {
+  kind: 'news' | 'recognition' | 'rating'
+  summary: string
+  source: string
+  url: string
+  published: string
 }
 
 export type Verdict = 'better' | 'as_expected' | 'worse'
@@ -156,6 +231,7 @@ export interface LeaderboardRow {
   verdict: Verdict
   nationalRank: number
   stateRank: number
+  overallRating: number | null
 }
 
 export interface Leaderboard {
@@ -201,4 +277,50 @@ export interface HospitalPerformance {
     nationalCount: number
     stateCount: number
   } | null
+}
+
+export interface SpotlightHospital extends LeaderboardRow {
+  usNewsHonorRoll: boolean
+  breakdown: {
+    category: Category
+    unit: string
+    higherIsBetter: boolean
+    actual: number
+    expected: number
+    gapSd: number // adjusted difference in units of the measure's real spread; positive = better
+    verdict: Verdict
+  }[]
+  history: HospitalHistory
+  notes: HospitalNote[]
+}
+
+export interface Spotlight {
+  hospitals: number
+  notesChecked: string
+  top: SpotlightHospital[]
+  bottom: SpotlightHospital[]
+}
+
+export interface Benchmarks {
+  ranked: number
+  stars: {
+    byRating: { stars: number | null; hospitals: number; avgScore: number; medianRank: number; better: number; worse: number }[]
+    spearman: number
+    hospitals: number
+  }
+  usNewsHonorRoll: {
+    edition: string
+    published: string
+    url: string
+    hospitals: {
+      id: string
+      name: string
+      city: string | null
+      state: string
+      nationalRank: number | null
+      score: number | null
+      verdict: Verdict | null
+      weakest: { category: Category; unit: string; actual: number; expected: number; gapSd: number } | null
+    }[]
+  }
 }

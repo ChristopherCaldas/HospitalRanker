@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composite, fitMeasure, verdictOf, type HospitalInput, type HospitalResult } from '../src/analysis/expected'
+import { COMPOSITE_CAP, activeColumns, composite, contextScales, features, fitMeasure, verdictOf, type HospitalInput, type HospitalResult } from '../src/analysis/expected'
 
 function rng(seed: number) {
   return () => {
@@ -34,7 +34,7 @@ function synthetic(seed = 11) {
       facilityId: `H${i}`, state: ['AL', 'AK', 'AZ'][i % 3], score: truth + (300 / Math.sqrt(cases)) * normal(), cases,
       lowerEstimate: null, higherEstimate: null,
       hospitalType: cah ? 'Critical Access Hospitals' : 'Acute Care Hospitals', ownership: 'Voluntary non-profit - Private',
-      occupancy, spend: 10000, dual: 0.2,
+      occupancy, spend: 10000, stateLowIncome: 0.2,
     })
   }
   // A big hospital that is 80 minutes faster than its context predicts.
@@ -111,5 +111,59 @@ describe('composite', () => {
   it('needs at least three measures', () => {
     const two = composite(measures.slice(0, 2))
     expect(two).toHaveLength(0)
+  })
+
+  it('caps any one measure so a single extreme score cannot decide the composite', () => {
+    const ms = measures.map((m, k) => ({
+      ...m,
+      results: [...m.results, result('SPIKE', k === 0 ? -20 : 0.5, 0.3), result('STEADY_BAD', -2.5, 0.3)],
+    }))
+    const out = composite(ms)
+    const spike = out.find(c => c.facilityId === 'SPIKE')!
+    // Uncapped, SPIKE averages (-20 + 0.5 + 0.5) / 3 = -6.3; capped, (-3 + 1) / 3.
+    expect(COMPOSITE_CAP).toBe(3)
+    expect(spike.nationalRank).toBeLessThan(out.find(c => c.facilityId === 'STEADY_BAD')!.nationalRank)
+  })
+})
+
+describe('hospital-level context', () => {
+  const r = rng(23)
+  const normal = () => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r())
+  // Satisfaction-like measure: 0.3 stars lower per 10 points of dual-eligible
+  // share. A third of hospitals have no hospital-level data at all.
+  const rows: HospitalInput[] = Array.from({ length: 3000 }, (_, i) => {
+    const dual = 0.05 + r() * 0.4
+    const known = i % 3 !== 0
+    return {
+      facilityId: `C${i}`, state: 'AL', score: 3.5 - 3 * (dual - 0.25) + 0.3 * normal(), cases: 100 + Math.floor(r() * 900),
+      lowerEstimate: null, higherEstimate: null, hospitalType: 'Acute Care Hospitals',
+      ownership: 'Voluntary non-profit - Private', occupancy: 55 + r() * 35, spend: 10000, stateLowIncome: 0.2,
+      context: known
+        ? { dual, dsh: null, caseMix: null, teaching: null, svi: r(), poverty: null, uninsured: null, rural: false }
+        : null,
+    }
+  })
+  const { summary } = fitMeasure('H_COMP_1_STAR_RATING', true, rows)
+
+  it('recovers a planted dual-eligible effect, in readable units', () => {
+    const c = summary.coefficients.dual_eligible_per_10pt
+    expect(Math.abs(c.estimate + 0.3)).toBeLessThan(3 * c.se + 0.02)
+    expect(summary.importance.patients).toBeGreaterThan(0.1)
+  })
+
+  it('treats missing values as average and flags them', () => {
+    const scales = contextScales(rows)
+    const x = features(rows[0], scales)
+    const known = features(rows[1], scales)
+    expect(x[10]).toBe(0) // dual imputed at the mean
+    expect(x[x.length - 2]).toBe(1) // no hospital-level data
+    expect(known[known.length - 2]).toBe(0)
+  })
+
+  it('uses case mix and teaching only for measures CMS does not risk-adjust', () => {
+    const fitted = fitMeasure('MORT_30_AMI', false, rows.map(h => ({ ...h, score: 12 + normal(), cases: 200 })))
+    expect(fitted.summary.coefficients.case_mix_per_0_25).toBeUndefined()
+    expect(fitted.summary.importance.complexity).toBeUndefined()
+    expect(activeColumns('OP_18b').length).toBeGreaterThan(activeColumns('MORT_30_AMI').length)
   })
 })

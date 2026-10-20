@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
-import type { HospitalDetail, HospitalMeasure, HospitalPerformance } from '../types'
-import { VERDICT_LABELS, formatScore } from '../lib/performance'
+import type { ContextField, FinanceMetric, HistoryPoint, HospitalContext, HospitalDetail, HospitalFinance, HospitalMeasure, HospitalPerformance } from '../types'
+import { CONTEXT_LABELS, FINANCE_LABELS, formatDollars, formatFinance } from '../lib/finance'
+import { NOTE_KINDS, VERDICT_LABELS, formatScore } from '../lib/performance'
 import { CATEGORIES, COMPARISON_HELP, MEASURE_GUIDE, formatMonth, formatValue, shortComparison } from '../lib/format'
 import { footnoteText } from '../lib/footnotes'
 import { href } from '../lib/router'
+import TrendChart, { TrendLegend } from '../components/TrendChart'
 
 const TONE = {
   better: 'bg-green-50 text-green-800 border-green-200',
@@ -50,6 +52,9 @@ export default function HospitalDetailView({ id }: { id: string }) {
             CMS overall star rating: <strong>{hospital.overallRating} out of 5</strong>
           </p>
         )}
+        {hospital.usNewsHonorRoll && (
+          <p className="text-sm text-gray-700 mt-1">On the U.S. News Best Hospitals Honor Roll (2026–27).</p>
+        )}
       </div>
 
       {hospital.performance.overall && (
@@ -62,7 +67,7 @@ export default function HospitalDetailView({ id }: { id: string }) {
             Ranked <strong>#{hospital.performance.overall.nationalRank.toLocaleString('en-US')}</strong> of{' '}
             {hospital.performance.overall.nationalCount.toLocaleString('en-US')} nationally and{' '}
             <strong>#{hospital.performance.overall.stateRank}</strong> of {hospital.performance.overall.stateCount} in{' '}
-            {hospital.state}, after accounting for its type, ownership and state conditions across{' '}
+            {hospital.state}, after accounting for its type, patients, community and state across{' '}
             {hospital.performance.overall.measures} measures.
           </p>
           <p className="text-sm text-gray-500 mt-1">
@@ -75,10 +80,39 @@ export default function HospitalDetailView({ id }: { id: string }) {
         </section>
       )}
 
-      <p className="text-sm text-gray-600">
-        How this hospital did on each measure, and how that compares with other hospitals in {hospital.state} and
-        across the country.
-      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ContextCard context={hospital.context} hospitalType={hospital.hospitalType} />
+        <FinanceCard finance={hospital.finance} hospitalType={hospital.hospitalType} />
+      </div>
+
+      {hospital.notes.length > 0 && (
+        <section className="bg-white border border-gray-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-800">In the news</h3>
+          <ul className="mt-2 space-y-2 text-sm text-gray-700">
+            {hospital.notes.map(n => (
+              <li key={n.url}>
+                <span className="text-xs text-gray-500">{NOTE_KINDS[n.kind]} · </span>
+                {n.summary}{' '}
+                <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline whitespace-nowrap">
+                  {n.source}, {formatMonth(n.published)} ↗
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-gray-400 mt-2">
+            Summarized in our own words from the linked sources. Items marked as a hospital press release are the
+            hospital's own claims.
+          </p>
+        </section>
+      )}
+
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm text-gray-600">
+          How this hospital did on each measure, how that compares with other hospitals in {hospital.state} and across
+          the country, and how it has changed since 2018.
+        </p>
+        <TrendLegend />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {hospital.measures.map(m => (
@@ -87,6 +121,7 @@ export default function HospitalDetailView({ id }: { id: string }) {
             m={m}
             state={hospital.state}
             perf={hospital.performance.measures.find(p => p.category === m.category) ?? null}
+            history={hospital.history[m.category] ?? []}
           />
         ))}
       </div>
@@ -99,10 +134,11 @@ export default function HospitalDetailView({ id }: { id: string }) {
   )
 }
 
-function MeasureCard({ m, state, perf }: {
+function MeasureCard({ m, state, perf, history }: {
   m: HospitalMeasure
   state: string | null
   perf: HospitalPerformance['measures'][number] | null
+  history: HistoryPoint[]
 }) {
   const label = CATEGORIES.find(c => c.id === m.category)?.label ?? m.name
   const guide = MEASURE_GUIDE[m.category]
@@ -170,6 +206,12 @@ function MeasureCard({ m, state, perf }: {
           </div>
         </>
       )}
+
+      {history.length > 1 && (
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <TrendChart label="Trend" points={history} unit={m.unit} higherIsBetter={m.higherIsBetter} />
+        </div>
+      )}
     </section>
   )
 }
@@ -198,5 +240,102 @@ function PercentileBar({ label, value, of }: { label: string; value: number | nu
         {pct !== null && <div className="h-full rounded-full" style={{ width: `${Math.max(2, pct)}%`, backgroundColor: '#2a78d6' }} />}
       </div>
     </div>
+  )
+}
+
+// What the expected scores adjust for, at the hospital level.
+function ContextCard({ context, hospitalType }: { context: HospitalContext | null; hospitalType: string | null }) {
+  const fields = Object.keys(CONTEXT_LABELS) as ContextField[]
+  const shown = context ? fields.filter(f => context.values[f] !== null) : []
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg p-4">
+      <h3 className="font-semibold text-gray-800">What its expected scores account for</h3>
+      <p className="text-xs text-gray-500 mt-1">
+        Besides its type ({hospitalType ?? 'unknown'}) and ownership: its patients, its county and, for ER times and
+        patient ratings, how complex its care is.
+      </p>
+      {shown.length === 0 ? (
+        <p className="text-sm text-gray-500 mt-3">No hospital-level context on file; only type, ownership and state are used.</p>
+      ) : (
+        <table className="w-full text-sm mt-3">
+          <thead className="text-gray-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th className="py-1 text-left font-medium">Factor</th>
+              <th className="py-1 text-right font-medium">This hospital</th>
+              <th className="py-1 text-right font-medium">Typical</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 tabular-nums">
+            {shown.map(f => (
+              <tr key={f} title={CONTEXT_LABELS[f].help}>
+                <td className="py-1.5 text-gray-700">{CONTEXT_LABELS[f].label}</td>
+                <td className="py-1.5 text-right text-gray-900">{formatFinance(context!.values[f], CONTEXT_LABELS[f].format)}</td>
+                <td className="py-1.5 text-right text-gray-500">{formatFinance(context!.nationalMedians[f], CONTEXT_LABELS[f].format)}</td>
+              </tr>
+            ))}
+            {context!.values.rural !== null && (
+              <tr>
+                <td className="py-1.5 text-gray-700">Rural</td>
+                <td className="py-1.5 text-right text-gray-900">{context!.values.rural ? 'Yes' : 'No'}</td>
+                <td className="py-1.5" />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+      {context && shown.length < fields.length && (
+        <p className="text-xs text-gray-400 mt-2">
+          Some factors come from CMS payment files that cover only regular acute care hospitals; missing ones are treated as average.
+        </p>
+      )}
+    </section>
+  )
+}
+
+// Cost-report finances: shown for context, not used in expected scores.
+function FinanceCard({ finance, hospitalType }: { finance: HospitalFinance | null; hospitalType: string | null }) {
+  const metrics = Object.keys(FINANCE_LABELS) as FinanceMetric[]
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-semibold text-gray-800">Finances</h3>
+        <a href={href('finances')} className="text-xs text-blue-600 hover:underline">Does money matter? →</a>
+      </div>
+      {!finance ? (
+        <p className="text-sm text-gray-500 mt-3">No Medicare cost report on file for this hospital.</p>
+      ) : (
+        <>
+          <p className="text-xs text-gray-500 mt-1">
+            Fiscal year ending {formatMonth(finance.fiscalYearEnd)} · {finance.beds ?? '—'} beds ·{' '}
+            {formatDollars(finance.netPatientRevenue)} patient revenue, {formatDollars(finance.otherIncome)} other income.
+            Shown for context only; expected scores don't adjust for money.
+          </p>
+          <table className="w-full text-sm mt-3">
+            <thead className="text-gray-500 text-xs uppercase tracking-wide">
+              <tr>
+                <th className="py-1 text-left font-medium">Measure</th>
+                <th className="py-1 text-right font-medium">This hospital</th>
+                <th className="py-1 text-right font-medium" title={`Median for ${hospitalType ?? 'hospitals of this type'}`}>Same type</th>
+                <th className="py-1 text-right font-medium">All</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 tabular-nums">
+              {metrics.map(m => (
+                <tr key={m} title={FINANCE_LABELS[m].help}>
+                  <td className="py-1.5 text-gray-700">{FINANCE_LABELS[m].label}</td>
+                  <td className="py-1.5 text-right text-gray-900">{formatFinance(finance.values[m], FINANCE_LABELS[m].format)}</td>
+                  <td className="py-1.5 text-right text-gray-500">{formatFinance(finance.typeMedians[m], FINANCE_LABELS[m].format)}</td>
+                  <td className="py-1.5 text-right text-gray-500">{formatFinance(finance.nationalMedians[m], FINANCE_LABELS[m].format)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-xs text-gray-400 mt-2">
+            From the hospital's Medicare cost report, which follows Medicare accounting rules rather than audited
+            financial statements. Hover a row for what it means.
+          </p>
+        </>
+      )}
+    </section>
   )
 }

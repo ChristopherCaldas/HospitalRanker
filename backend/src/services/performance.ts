@@ -1,4 +1,6 @@
 import { pool } from '../db/pool'
+import { HOSPITAL_NOTES, NOTES_CHECKED, US_NEWS_HONOR_ROLL } from '../content/hospitalNotes'
+import { getHistories } from './history'
 
 // Reads the expected-vs-actual snapshot (migrations/008, analysis/expected.ts).
 // Gaps are oriented so positive always means better than expected.
@@ -48,6 +50,7 @@ export interface LeaderboardRow {
   verdict: 'better' | 'as_expected' | 'worse'
   nationalRank: number
   stateRank: number
+  overallRating: number | null
 }
 
 export interface Leaderboard {
@@ -60,7 +63,8 @@ export interface Leaderboard {
 
 const LEADERBOARD_COLUMNS = `
   h.facility_id AS id, h.name, h.city, c.state, h.hospital_type AS "hospitalType", c.measures,
-  c.score, c.score_se AS "scoreSe", c.verdict, c.national_rank AS "nationalRank", c.state_rank AS "stateRank"`
+  c.score, c.score_se AS "scoreSe", c.verdict, c.national_rank AS "nationalRank", c.state_rank AS "stateRank",
+  h.overall_rating AS "overallRating"`
 
 // Overall context-adjusted ranking, nationally or within one state.
 export async function getLeaderboard(state: string | null, limit: number): Promise<Leaderboard> {
@@ -146,4 +150,96 @@ export async function getHospitalPerformance(id: string) {
     ),
   ])
   return { measures: measures.rows, overall: overall.rows[0] ?? null }
+}
+
+// The national top and bottom few, each with what drives its score (every
+// measure's actual vs. expected), its yearly history and curated notes.
+export async function getSpotlight(n = 5) {
+  const board = await getLeaderboard(null, n)
+  const rows = [...board.top, ...board.bottom]
+  const ids = rows.map(r => r.id)
+  const [{ rows: measures }, histories] = await Promise.all([
+    pool.query<{
+      id: string; category: string; unit: string; higherIsBetter: boolean
+      actual: number; expected: number; gapSd: number; verdict: string
+    }>(
+      `SELECT e.facility_id AS id, m.category, m.unit, m.higher_is_better AS "higherIsBetter",
+              e.actual, e.expected, e.adjusted_gap / x.tau AS "gapSd", e.verdict
+       FROM analysis_latest_hospital_expected e
+       JOIN measures m USING (measure_id)
+       JOIN analysis_latest_expected_models x USING (measure_id)
+       WHERE e.facility_id = ANY($1) AND m.category IS NOT NULL`,
+      [ids]
+    ),
+    getHistories(ids),
+  ])
+  const honorRoll = new Set(US_NEWS_HONOR_ROLL.facilityIds)
+  const detail = (r: LeaderboardRow) => ({
+    ...r,
+    usNewsHonorRoll: honorRoll.has(r.id),
+    breakdown: measures.filter(m => m.id === r.id).map(({ id: _id, ...m }) => m),
+    history: histories[r.id],
+    notes: HOSPITAL_NOTES[r.id] ?? [],
+  })
+  return {
+    hospitals: board.hospitals,
+    notesChecked: NOTES_CHECKED,
+    top: board.top.map(detail),
+    bottom: board.bottom.map(detail),
+  }
+}
+
+// Sanity check: how the overall context-adjusted ranking lines up with CMS's
+// own star rating and with the U.S. News Honor Roll.
+export async function getBenchmarks() {
+  const [byStars, agreement, honor, ranked] = await Promise.all([
+    pool.query(
+      `SELECT h.overall_rating AS stars, count(*)::int AS hospitals, avg(c.score) AS "avgScore",
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY c.national_rank) AS "medianRank",
+              count(*) FILTER (WHERE c.verdict = 'better')::int AS better,
+              count(*) FILTER (WHERE c.verdict = 'worse')::int AS worse
+       FROM analysis_latest_hospital_composite c JOIN hospitals h USING (facility_id)
+       GROUP BY h.overall_rating ORDER BY h.overall_rating NULLS LAST`
+    ),
+    // Spearman: Pearson correlation of average ranks (ties share a rank).
+    pool.query<{ spearman: number; hospitals: number }>(
+      `WITH r AS (
+         SELECT rank() OVER (ORDER BY c.score) + (count(*) OVER (PARTITION BY c.score) - 1) / 2.0 AS a,
+                rank() OVER (ORDER BY h.overall_rating) + (count(*) OVER (PARTITION BY h.overall_rating) - 1) / 2.0 AS b
+         FROM analysis_latest_hospital_composite c JOIN hospitals h USING (facility_id)
+         WHERE h.overall_rating IS NOT NULL
+       )
+       SELECT corr(a, b) AS spearman, count(*)::int AS hospitals FROM r`
+    ),
+    pool.query(
+      // Each hospital's weakest measure explains most disagreements.
+      `SELECT h.facility_id AS id, h.name, h.city, h.state, c.national_rank AS "nationalRank", c.score, c.verdict,
+              w.weakest
+       FROM hospitals h
+       LEFT JOIN analysis_latest_hospital_composite c USING (facility_id)
+       LEFT JOIN LATERAL (
+         SELECT json_build_object('category', m.category, 'unit', m.unit, 'actual', e.actual,
+                                  'expected', e.expected, 'gapSd', e.adjusted_gap / x.tau) AS weakest
+         FROM analysis_latest_hospital_expected e
+         JOIN measures m USING (measure_id)
+         JOIN analysis_latest_expected_models x USING (measure_id)
+         WHERE e.facility_id = h.facility_id AND m.category IS NOT NULL
+         ORDER BY e.adjusted_gap / x.tau LIMIT 1
+       ) w ON true
+       WHERE h.facility_id = ANY($1)
+       ORDER BY c.national_rank NULLS LAST`,
+      [US_NEWS_HONOR_ROLL.facilityIds]
+    ),
+    pool.query<{ n: number }>('SELECT count(*)::int AS n FROM analysis_latest_hospital_composite'),
+  ])
+  return {
+    ranked: ranked.rows[0].n,
+    stars: { byRating: byStars.rows, ...agreement.rows[0] },
+    usNewsHonorRoll: {
+      edition: US_NEWS_HONOR_ROLL.edition,
+      published: US_NEWS_HONOR_ROLL.published,
+      url: US_NEWS_HONOR_ROLL.url,
+      hospitals: honor.rows,
+    },
+  }
 }

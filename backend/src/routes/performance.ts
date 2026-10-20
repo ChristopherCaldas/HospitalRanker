@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
-import { getContextSummary, getLeaderboard, getMeasurePerformance } from '../services/performance'
+import { getBenchmarks, getContextSummary, getLeaderboard, getMeasurePerformance, getSpotlight } from '../services/performance'
 import { CATEGORY_META } from '../services/categories'
 
 const router = Router()
@@ -17,6 +17,27 @@ router.get('/context', async (_req: Request, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to fetch context summary' })
+  }
+})
+
+// GET /api/performance/spotlight — national top and bottom 5 with drivers,
+// history and curated notes.
+router.get('/spotlight', async (_req: Request, res: Response) => {
+  try {
+    res.json(await getSpotlight(5))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to fetch spotlight' })
+  }
+})
+
+// GET /api/performance/benchmarks — agreement with CMS stars and U.S. News.
+router.get('/benchmarks', async (_req: Request, res: Response) => {
+  try {
+    res.json(await getBenchmarks())
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to fetch benchmarks' })
   }
 })
 
