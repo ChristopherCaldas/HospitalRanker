@@ -111,3 +111,10 @@ export function shortComparison(value: string | null): { label: string; tone: 'b
 
 export const COMPARISON_HELP =
   "CMS's own verdict. It tests whether the hospital's score is clearly different from the national rate once the hospital's size and margin of error are taken into account. \"Same as national\" means any difference could be down to chance."
+
+// States and DC plus PR, for state filters.
+export const STATES = [
+  'AK','AL','AR','AZ','CA','CO','CT','DC','DE','FL','GA','HI','IA','ID','IL','IN','KS','KY','LA','MA','MD',
+  'ME','MI','MN','MO','MS','MT','NC','ND','NE','NH','NJ','NM','NV','NY','OH','OK','OR','PA','PR','RI','SC',
+  'SD','TN','TX','UT','VA','VT','WA','WI','WV','WY',
+]

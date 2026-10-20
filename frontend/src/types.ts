@@ -122,4 +122,83 @@ export interface HospitalDetail extends HospitalSummary {
   ownership: string | null
   emergencyServices: boolean | null
   measures: HospitalMeasure[]
+  performance: HospitalPerformance
+}
+
+export type Verdict = 'better' | 'as_expected' | 'worse'
+
+export interface ContextSummary {
+  category: Category
+  label: string
+  measureId: string
+  unit: string
+  higherIsBetter: boolean
+  method: string
+  hospitals: number
+  r2Cv: number
+  importance: Record<string, number>
+  coefficients: Record<string, { estimate: number; se: number }>
+  rankAgreement: number
+  tau: number
+  better: number
+  worse: number
+}
+
+export interface LeaderboardRow {
+  id: string
+  name: string
+  city: string | null
+  state: string
+  hospitalType: string | null
+  measures: number
+  score: number
+  scoreSe: number
+  verdict: Verdict
+  nationalRank: number
+  stateRank: number
+}
+
+export interface Leaderboard {
+  hospitals: number
+  better: number
+  worse: number
+  top: LeaderboardRow[]
+  bottom: LeaderboardRow[]
+}
+
+export interface MeasurePerformanceRow {
+  id: string
+  name: string
+  city: string | null
+  state: string
+  actual: number
+  expected: number
+  gap: number
+  adjustedGap: number
+  gapSe: number
+  verdict: Verdict
+}
+
+export interface MeasurePerformance {
+  category: Category
+  label: string
+  measureId: string
+  unit: string
+  higherIsBetter: boolean
+  over: MeasurePerformanceRow[]
+  under: MeasurePerformanceRow[]
+}
+
+export interface HospitalPerformance {
+  measures: { category: Category; expected: number; adjustedGap: number; gapSe: number; verdict: Verdict }[]
+  overall: {
+    measures: number
+    score: number
+    scoreSe: number
+    verdict: Verdict
+    nationalRank: number
+    stateRank: number
+    nationalCount: number
+    stateCount: number
+  } | null
 }

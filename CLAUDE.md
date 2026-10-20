@@ -61,6 +61,14 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - Spend data ends 2024, so 1-year windows ending Sep 2025 (OP_18b, HCAHPS) have spend for 25% of the window; justified because state standardized spend correlates ≥0.987 year over year.
 - Statistics were cross-checked against an independent JS implementation (r, rho, partial r, BH q all match).
 
+### Expected vs. actual (`migrations/008_expected_performance.sql`, `backend/src/analysis/expected.ts`, `stats.ts`)
+- Runs inside `npm run analyze` after the SQL snapshots, same transaction. The input fingerprint includes `METHOD_VERSION` in `analysis/index.ts`; **bump it when changing the model** so the next run recomputes.
+- Per measure: WLS of score on peer group (type/ownership dummies) + state occupancy, spend, low-income share (from `analysis_state_measure_live`). **Volume is not a predictor** (user decision: keep the volume–quality effect); it only sets noise. Hospitals outside the 50 states + DC have no context and are skipped.
+- Uncertainty per `METHODS`: `shrunk` (OP_18b, HCAHPS; noise k/n from `noiseModel`, + 1/12 rounding floor for stars), `cms_smoothed` (MORT/READM: published rates are already posterior means → no second shrink, posterior SD sqrt(τ²se²/(τ²+se²)), τ = spread of gaps), `cms_interval` (PSI_90: CMS CI).
+- Verdicts are "clear cases only" (user decision): the 95% interval must clear a margin of τ (1 SD of real spread). Composite: gaps in τ units, averaged over ≥3 measures, shrunk again, margin = composite τ.
+- "Does context matter?" per measure: `r2_cv` (5-fold), `importance` (CV R² lost dropping each group), coefficients with SEs, `rank_agreement` (raw vs adjusted Spearman).
+- API: `GET /api/performance/context`, `GET /api/performance?state=&limit=`, `GET /api/performance/:category`; hospital detail includes `performance`. UI: `views/PerformanceView.tsx` (`#/performance/:category`), labels in `lib/performance.ts`.
+
 ### Deployment (Vercel)
 - `vercel.json` builds the frontend and rewrites `/api/*` to `api/index.ts`, which re-exports `backend/src/app.ts` (the Express app; `index.ts` only adds `listen` for local dev). `db/pool.ts` calls `attachDatabasePool` when `VERCEL` is set.
 - Production `DATABASE_URL` is the **read-only `app_readonly` role** (pooled). Create/rotate it with `npm run create-readonly-role --workspace=backend` (writes `APP_READONLY_DATABASE_URL` to `.env.local`; password never printed or committed). Grants: `migrations/007_app_readonly.sql` (no-op if the role doesn't exist). It's created in SQL because Neon CLI/console roles join `neon_superuser`.

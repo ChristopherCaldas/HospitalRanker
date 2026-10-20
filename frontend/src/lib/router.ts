@@ -6,9 +6,14 @@ export function useHashRoute(): string[] {
   const read = () => window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
   const [route, setRoute] = useState(read)
   useEffect(() => {
+    let section = read()[0]
     const onChange = () => {
-      setRoute(read())
-      window.scrollTo(0, 0)
+      const next = read()
+      setRoute(next)
+      // New section: start at the top. Same section (e.g. a measure tab lower
+      // on the page): keep the reader's place.
+      if (next[0] !== section) window.scrollTo(0, 0)
+      section = next[0]
     }
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)

@@ -3,11 +3,13 @@ import { CATEGORIES } from './lib/format'
 import { href, useHashRoute } from './lib/router'
 import RankingsView from './views/RankingsView'
 import StatesView from './views/StatesView'
+import PerformanceView from './views/PerformanceView'
 import HospitalSearchView from './views/HospitalSearchView'
 import HospitalDetailView from './views/HospitalDetailView'
 
 const SECTIONS = [
   { id: 'rankings', label: 'Rankings' },
+  { id: 'performance', label: 'Expected vs. actual' },
   { id: 'states', label: 'States' },
   { id: 'hospitals', label: 'Hospitals' },
 ]
@@ -46,8 +48,9 @@ export default function App() {
       </header>
 
       {section === 'states' && <StatesView category={asCategory(arg)} />}
+      {section === 'performance' && <PerformanceView category={asCategory(arg)} />}
       {section === 'hospitals' && (arg ? <HospitalDetailView id={arg} /> : <HospitalSearchView />)}
-      {section !== 'states' && section !== 'hospitals' && <RankingsView category={asCategory(arg)} />}
+      {!['states', 'performance', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
     </div>
   )
 }
