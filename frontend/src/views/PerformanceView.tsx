@@ -26,8 +26,10 @@ export default function PerformanceView({ category }: { category: Category }) {
         <h2 className="text-xl font-semibold text-gray-800">Who beats expectations?</h2>
         <p className="text-sm text-gray-600 mt-1 leading-relaxed">
           A raw ranking can reward hospitals for easy circumstances and punish ones in hard places. Here each hospital is
-          compared with what we'd <em>expect</em> from hospitals like it, in states like its own. Before using context to
-          judge anyone, the first step checks whether it actually explains anything.
+          compared with what we'd <em>expect</em> given things it doesn't control: what kind of hospital it is, who its
+          patients are, the community it serves and its state. Money and staffing are left out on purpose (see{' '}
+          <a href={href('finances')} className="text-blue-600 hover:underline">Finances</a>). Before using context to judge
+          anyone, the first step checks whether it actually explains anything.
         </p>
       </div>
       <ContextSection />
@@ -39,7 +41,7 @@ export default function PerformanceView({ category }: { category: Category }) {
         items={[
           {
             term: 'Expected score',
-            text: "What a hospital would be predicted to score from its context alone: its type and ownership, and its state's bed occupancy, Medicare spending and low-income share over the same period. Hospital size is deliberately not part of it, so larger hospitals still get credit for the real quality advantage that experience brings.",
+            text: "What a hospital would be predicted to score from its context alone: its type and ownership; its own share of low-income patients; its county's social vulnerability, poverty and uninsured rates and whether it's rural; its state's bed occupancy, Medicare spending and low-income share over the same period; and, for ER times and patient ratings only, how complex its patients are (case mix and teaching). Hospital size, finances and staffing are deliberately not part of it: larger hospitals should keep credit for the quality advantage experience brings, and money and staffing are partly management's choices.",
           },
           {
             term: 'Difference',
@@ -76,13 +78,20 @@ function ContextSection() {
   if (!rows) return <p className="text-gray-400 text-sm">Loading…</p>
 
   const sorted = [...rows].sort((a, b) => b.r2Cv - a.r2Cv)
-  const matters = sorted.filter(r => r.r2Cv >= 0.1)
-  const barely = sorted.filter(r => r.r2Cv < 0.1)
+  const strong = sorted.filter(r => r.r2Cv >= 0.2)
+  const some = sorted.filter(r => r.r2Cv >= 0.05 && r.r2Cv < 0.2)
+  const barely = sorted.filter(r => r.r2Cv < 0.05)
+  const list = (xs: ContextSummary[]) => xs.map((r, i) => (
+    <span key={r.category}>
+      {i > 0 && (i === xs.length - 1 ? ' and ' : ', ')}
+      <strong>{percent(r.r2Cv)}</strong> of the differences in {r.label.toLowerCase().replace(/^er /, 'ER ')}
+      {GROUP_LABELS[topGroupOf(r)] ? ` (mostly ${GROUP_LABELS[topGroupOf(r)].name.replace(/^(?!Medicare)\w/, c => c.toLowerCase())})` : ''}
+    </span>
+  ))
   const stateFactorMax = Math.max(
     ...rows.flatMap(r => ['crowding', 'spending', 'low_income'].map(g => r.importance[g] ?? 0))
   )
   const topGroupOf = (r: ContextSummary) => Object.entries(r.importance).sort((a, b) => b[1] - a[1])[0]?.[0]
-  const peerGroupLeads = matters.length > 0 && matters.every(r => topGroupOf(r) === 'peer_group')
 
   return (
     <section className="space-y-4">
@@ -92,33 +101,31 @@ function ContextSection() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-4 text-sm text-gray-700 space-y-2 leading-relaxed">
-        {matters.length > 0 && (
+        {strong.length > 0 && (
           <p>
-            <strong>Yes, for some measures.</strong> Context explains{' '}
-            {matters.map((r, i) => (
-              <span key={r.category}>
-                {i > 0 && (i === matters.length - 1 ? ' and ' : ', ')}
-                <strong>{percent(r.r2Cv)}</strong> of the differences in {r.label.toLowerCase().replace(/^er /, 'ER ')}
-              </span>
-            ))}
-            {peerGroupLeads
-              ? ', mostly through hospital type: critical access hospitals (small rural ones) run very differently from big city hospitals.'
-              : '.'}
+            <strong>Yes, a lot for some measures.</strong> Context explains {list(strong)}.
+          </p>
+        )}
+        {some.length > 0 && (
+          <p>
+            <strong>Somewhat for others.</strong> It explains {list(some)}. CMS already adjusts these for how sick each
+            hospital's patients were, so what's left is mostly about income and place.
           </p>
         )}
         {barely.length > 0 && (
           <p>
-            <strong>Barely, for the rest.</strong> For {barely.map(r => r.label.toLowerCase()).join(', ')} it explains under{' '}
-            {Math.ceil(Math.max(...barely.map(r => r.r2Cv)) * 100)}%. CMS already adjusts those scores for how sick each
-            hospital's patients were, so adjusting again changes little.
+            <strong>Barely for {barely.map(r => r.label.toLowerCase()).join(', ')}</strong>, under{' '}
+            {Math.ceil(Math.max(...barely.map(r => r.r2Cv)) * 100)}%: those scores are already heavily adjusted and
+            smoothed by CMS.
           </p>
         )}
         {stateFactorMax < 0.05 && (
           <p>
-            <strong>State conditions add little once hospital type is known.</strong> Bed occupancy, Medicare spending and
-            low-income share each add at most {(stateFactorMax * 100).toFixed(1)} percentage points of explanatory power
-            for any measure. The idea that state strain and spending drive hospital results finds only weak support at
-            the hospital level, even where states differ on the States page.
+            <strong>State conditions add little once the hospital's own context is known.</strong> Bed occupancy, Medicare
+            spending and low-income share each add at most {(stateFactorMax * 100).toFixed(1)} percentage points of
+            explanatory power for any measure. Differences between hospitals in the same state are far larger than
+            differences between states, so hospital- and county-level context does the work, even where states differ on
+            the States page.
           </p>
         )}
       </div>

@@ -7,12 +7,21 @@ vi.mock('../src/db/pool', () => ({ pool: { query: vi.fn() } }))
 vi.mock('../src/services/rankings', () => ({ getRanking: vi.fn() }))
 vi.mock('../src/services/analysis', () => ({ getStateAnalysis: vi.fn() }))
 vi.mock('../src/services/hospitals', () => ({ searchHospitals: vi.fn(), getHospital: vi.fn() }))
+vi.mock('../src/services/finances', () => ({ getFinanceOverview: vi.fn(), getHospitalFinance: vi.fn() }))
+vi.mock('../src/services/history', () => ({ getHistories: vi.fn() }))
+vi.mock('../src/services/performance', () => ({
+  getHospitalPerformance: vi.fn(), getContextSummary: vi.fn(), getLeaderboard: vi.fn(),
+  getMeasurePerformance: vi.fn(), getSpotlight: vi.fn(), getBenchmarks: vi.fn(),
+}))
 
 const { app } = await import('../src/app')
 const { pool } = await import('../src/db/pool')
 const { getRanking } = await import('../src/services/rankings')
 const { getStateAnalysis } = await import('../src/services/analysis')
 const { searchHospitals, getHospital } = await import('../src/services/hospitals')
+const { getFinanceOverview, getHospitalFinance } = await import('../src/services/finances')
+const { getHistories } = await import('../src/services/history')
+const { getHospitalPerformance } = await import('../src/services/performance')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -85,5 +94,25 @@ describe('GET /api/hospitals', () => {
   it('404s an unknown hospital id', async () => {
     vi.mocked(getHospital).mockResolvedValue(null)
     expect((await request(app).get('/api/hospitals/999999')).status).toBe(404)
+  })
+
+  it('adds history, finances, context and curated notes to a hospital', async () => {
+    vi.mocked(getHospital).mockResolvedValue({ id: '330399', name: 'St Barnabas', measures: [] } as never)
+    vi.mocked(getHospitalPerformance).mockResolvedValue({ measures: [], overall: null })
+    vi.mocked(getHistories).mockResolvedValue({ '330399': { safety: [] } })
+    vi.mocked(getHospitalFinance).mockResolvedValue({ finance: { beds: 283 }, context: null } as never)
+    const res = await request(app).get('/api/hospitals/330399')
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ history: { safety: [] }, finance: { beds: 283 }, context: null, usNewsHonorRoll: false })
+    expect(res.body.notes.length).toBeGreaterThan(0)
+  })
+})
+
+describe('GET /api/finances', () => {
+  it('returns the overview, and 500 when the query fails', async () => {
+    vi.mocked(getFinanceOverview).mockResolvedValue({ hospitals: 5188 } as never)
+    expect((await request(app).get('/api/finances')).body).toEqual({ hospitals: 5188 })
+    vi.mocked(getFinanceOverview).mockRejectedValue(new Error('boom'))
+    expect((await request(app).get('/api/finances')).status).toBe(500)
   })
 })

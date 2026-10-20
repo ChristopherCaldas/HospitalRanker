@@ -126,6 +126,59 @@ export interface HospitalDetail extends HospitalSummary {
   history: HospitalHistory
   notes: HospitalNote[]
   usNewsHonorRoll: boolean
+  finance: HospitalFinance | null
+  context: HospitalContext | null
+}
+
+export type FinanceMetric =
+  | 'patientMargin' | 'totalMargin' | 'otherIncomeShare' | 'uncompensatedShare'
+  | 'medicaidDayShare' | 'contractLaborShare' | 'ftePerBed' | 'occupancy'
+
+// Latest Medicare cost report; shares are 0-1. Medians are national and for
+// hospitals of the same type.
+export interface HospitalFinance {
+  fiscalYearBegin: string | null
+  fiscalYearEnd: string
+  beds: number | null
+  netPatientRevenue: number | null
+  otherIncome: number | null
+  values: Record<FinanceMetric, number | null>
+  nationalMedians: Record<FinanceMetric, number | null>
+  typeMedians: Record<FinanceMetric, number | null>
+}
+
+export type ContextField =
+  | 'dualProportion' | 'dshPct' | 'caseMixIndex' | 'residentBedRatio' | 'sviPercentile' | 'poverty150Pct' | 'uninsuredPct'
+
+// What the expected-score model adjusts for, at the hospital level.
+export interface HospitalContext {
+  values: Record<ContextField, number | null> & { rural: boolean | null }
+  nationalMedians: Record<ContextField, number | null>
+}
+
+export interface FinanceOverview {
+  hospitals: number
+  firstYearEnd: string
+  lastYearEnd: string
+  patientMargin: number
+  totalMargin: number
+  losingOnPatients: number
+  losingOverall: number
+  byOwnership: {
+    ownership: string
+    hospitals: number
+    patientMargin: number | null
+    totalMargin: number | null
+    otherIncomeShare: number | null
+    uncompensatedShare: number | null
+    medicaidDayShare: number | null
+    losingOverall: number
+  }[]
+  vsPerformance: {
+    metric: FinanceMetric
+    spearman: number | null
+    fifths: { fifth: number; hospitals: number; lo: number; hi: number; avgScore: number; se: number }[]
+  }[]
 }
 
 // Yearly scores for one measure, oldest first, with the national median for

@@ -4,11 +4,20 @@ import { crossValidatedR2, noiseModel, predict, shrink, spearman, weightedR2, wl
 // "Expected vs. actual" hospital performance.
 //
 // For each measure, a weighted regression predicts the score a hospital would
-// be expected to get given its context: its peer group (hospital type and
-// ownership) and its state's hospital crowding, Medicare spending and
-// low-income share over the measure's own window. Volume is deliberately NOT a
-// predictor (larger hospitals' real quality advantage should still count); it
-// only sets how noisy each score is.
+// be expected to get given its context, meaning things outside management's
+// day-to-day control:
+//   peer group   hospital type and ownership
+//   patients     the hospital's own dual-eligible and low-income (DSH) shares
+//   complexity   case mix index and teaching intensity (residents per bed)
+//   community    its county's social vulnerability, poverty, uninsured rate;
+//                rural or not
+//   state        crowding, Medicare spending and low-income share over the
+//                measure's own window
+// Finances and staffing are deliberately NOT predictors: adjusting for them
+// would grade an understaffed or badly run hospital on a curve. They are shown
+// as diagnostics instead (hospital_finance). Volume isn't a predictor either
+// (larger hospitals' real quality advantage should still count); it only sets
+// how noisy each score is.
 //
 // Each measure also gets a "does context matter?" summary: cross-validated
 // R^2, coefficient estimates with standard errors, the drop in
@@ -20,9 +29,11 @@ import { crossValidatedR2, noiseModel, predict, shrink, spearman, weightedR2, wl
 //   shrunk       raw measures (ER minutes, star ratings): empirical-Bayes
 //                shrinkage toward the expected score; noise ~ 1/cases, plus a
 //                fixed rounding-noise floor for whole-star ratings
-//   cms_smoothed CMS's risk-standardized rates are already shrunk by its
-//                hierarchical models, so no second shrinkage; binomial SE
-//   cms_interval CMS publishes a 95% interval; SE taken from it
+//   cms_smoothed CMS's published scores are already shrunk by its own models
+//                (hierarchical models for mortality/readmission, reliability
+//                weighting for PSI 90), so no second shrinkage; their
+//                uncertainty is a posterior SD built from the sampling SE
+//                (binomial from case counts, or CMS's interval for PSI 90)
 //
 // "Clear cases only": a hospital is labeled better/worse than expected only if
 // its 95% interval lies entirely beyond a meaningful margin, one standard
@@ -30,7 +41,7 @@ import { crossValidatedR2, noiseModel, predict, shrink, spearman, weightedR2, wl
 // Being merely statistically different from the line isn't enough: with
 // precise data almost every hospital is.
 
-export type Method = 'shrunk' | 'cms_smoothed' | 'cms_interval'
+export type Method = 'shrunk' | 'cms_smoothed'
 export type Verdict = 'better' | 'as_expected' | 'worse'
 
 const METHODS: Record<string, Method> = {
@@ -38,8 +49,18 @@ const METHODS: Record<string, Method> = {
   H_COMP_1_STAR_RATING: 'shrunk',
   MORT_30_AMI: 'cms_smoothed',
   READM_30_HF: 'cms_smoothed',
-  PSI_90: 'cms_interval',
+  PSI_90: 'cms_smoothed',
 }
+
+// Measures with no case counts: sampling SE comes from CMS's 95% interval.
+// (PSI 90's interval is wider than the observed spread between hospitals,
+// a sign the published values are already smoothed.)
+const SE_FROM_INTERVAL = new Set(['PSI_90'])
+
+// A hospital's contribution from any one measure to the overall score is
+// capped at this many SDs, so one extreme measure (PSI 90 has a long bad
+// tail) can't decide the composite on its own.
+export const COMPOSITE_CAP = 3
 
 // Ratings published as whole stars carry rounding error: uniform over a
 // one-star bin, variance 1/12, regardless of how many surveys there were.
@@ -57,9 +78,25 @@ export interface HospitalInput {
   higherEstimate: number | null
   hospitalType: string | null
   ownership: string | null
+  // state, over the measure's window
   occupancy: number
   spend: number
-  dual: number
+  stateLowIncome: number
+  context?: HospitalContext | null
+}
+
+// Hospital-level context (hospital_context). Any field may be missing:
+// critical access hospitals, Maryland and non-acute hospitals aren't in the
+// CMS payment files that supply the patient and complexity fields.
+export interface HospitalContext {
+  dual: number | null // share of Medicare stays dual-eligible, 0-1
+  dsh: number | null // low-income patient percentage, 0-1
+  caseMix: number | null
+  teaching: number | null // residents per bed
+  svi: number | null // county social vulnerability percentile, 0-1
+  poverty: number | null // county % below 150% of poverty
+  uninsured: number | null // county % uninsured
+  rural: boolean | null
 }
 
 export interface HospitalResult {
@@ -87,26 +124,96 @@ export interface ModelSummary {
   noiseK: number | null
 }
 
+// Hospital-level context predictors, in readable units: `per` is how much of
+// the raw value one unit of the coefficient means (e.g. 0.1 = per 10 points of
+// a 0-1 share).
+const CONTEXT_VARS: { key: keyof HospitalContext; name: string; per: number }[] = [
+  { key: 'dual', name: 'dual_eligible_per_10pt', per: 0.1 },
+  { key: 'dsh', name: 'low_income_patients_per_10pt', per: 0.1 },
+  { key: 'caseMix', name: 'case_mix_per_0_25', per: 0.25 },
+  { key: 'teaching', name: 'residents_per_bed_per_0_1', per: 0.1 },
+  { key: 'svi', name: 'county_vulnerability_per_10pt', per: 0.1 },
+  { key: 'poverty', name: 'county_poverty_per_10pt', per: 10 },
+  { key: 'uninsured', name: 'county_uninsured_per_5pt', per: 5 },
+  { key: 'rural', name: 'rural', per: 1 },
+]
+
 const PREDICTORS = [
   'intercept', 'critical_access', 'federal', 'other_type', 'for_profit', 'public', 'physician_owned',
   'occupancy_per_10pt', 'medicare_spend_per_1k', 'low_income_per_10pt',
+  ...CONTEXT_VARS.map(v => v.name),
+  'no_hospital_data', 'no_county_data',
 ]
+const col = (name: string) => PREDICTORS.indexOf(name)
 
 // Column indexes of each context group, for the drop-one-group test.
 const GROUPS: Record<string, number[]> = {
   peer_group: [1, 2, 3, 4, 5, 6],
+  patients: ['dual_eligible_per_10pt', 'low_income_patients_per_10pt', 'no_hospital_data'].map(col),
+  complexity: ['case_mix_per_0_25', 'residents_per_bed_per_0_1'].map(col),
+  community: ['county_vulnerability_per_10pt', 'county_poverty_per_10pt', 'county_uninsured_per_5pt', 'rural', 'no_county_data'].map(col),
   crowding: [7],
   spending: [8],
   low_income: [9],
 }
 
-// Peer group + state context. Federal ownership is covered by the federal
-// type dummy, so it gets no ownership column of its own.
-export function features(h: HospitalInput): number[] {
+// Which groups each measure uses. Case mix and teaching intensity stand in
+// for how sick and complex patients are, which matters for the measures CMS
+// doesn't risk-adjust (ER time, patient surveys). CMS's mortality,
+// readmission and PSI 90 scores are already adjusted for patient risk, so
+// there those two would mostly measure what big academic centers are good
+// at, and adjusting it away would erase the credit they earn (the same
+// reasoning that keeps volume out).
+const UNADJUSTED_ONLY = new Set(['complexity'])
+const RISK_ADJUSTED = new Set(['MORT_30_AMI', 'READM_30_HF', 'PSI_90'])
+
+export function activeColumns(measureId: string): number[] {
+  const dropped = new Set(
+    RISK_ADJUSTED.has(measureId)
+      ? Object.entries(GROUPS).filter(([g]) => UNADJUSTED_ONLY.has(g)).flatMap(([, cols]) => cols)
+      : []
+  )
+  return PREDICTORS.map((_, j) => j).filter(j => !dropped.has(j))
+}
+
+// Per variable: clip limits (1st/99th percentile) and the mean of the clipped
+// values. Missing values are set to the mean, i.e. contribute 0, and flagged.
+export type ContextScales = Record<string, { lo: number; hi: number; mean: number }>
+
+const raw = (c: HospitalContext | null | undefined, key: keyof HospitalContext): number | null => {
+  const v = c?.[key]
+  return v === null || v === undefined ? null : Number(v)
+}
+
+export function contextScales(rows: HospitalInput[]): ContextScales {
+  const out: ContextScales = {}
+  for (const { key } of CONTEXT_VARS) {
+    const vals = rows.map(r => raw(r.context, key)).filter((v): v is number => v !== null).sort((a, b) => a - b)
+    if (vals.length === 0) {
+      out[key] = { lo: 0, hi: 0, mean: 0 }
+      continue
+    }
+    const lo = vals[Math.floor((vals.length - 1) * 0.01)]
+    const hi = vals[Math.ceil((vals.length - 1) * 0.99)]
+    out[key] = { lo, hi, mean: vals.reduce((a, v) => a + Math.min(hi, Math.max(lo, v)), 0) / vals.length }
+  }
+  return out
+}
+
+// Peer group, state context and hospital-level context. Federal ownership is
+// covered by the federal type dummy, so it gets no ownership column of its own.
+export function features(h: HospitalInput, scales: ContextScales = {}): number[] {
   const type = h.hospitalType ?? ''
   const own = h.ownership ?? ''
   const federal = /Veterans|Defense/.test(type)
   const isPublic = (own.startsWith('Government') && !own.includes('Federal')) || own === 'Tribal'
+  const context = CONTEXT_VARS.map(({ key, per }) => {
+    const v = raw(h.context, key)
+    const s = scales[key]
+    if (v === null || !s) return 0
+    return (Math.min(s.hi, Math.max(s.lo, v)) - s.mean) / per
+  })
+  const c = h.context
   return [
     1,
     +(type === 'Critical Access Hospitals'),
@@ -117,7 +224,10 @@ export function features(h: HospitalInput): number[] {
     +(own === 'Physician'),
     h.occupancy / 10,
     h.spend / 1000,
-    h.dual * 10,
+    h.stateLowIncome * 10,
+    ...context,
+    +(raw(c, 'dual') === null && raw(c, 'dsh') === null && raw(c, 'caseMix') === null),
+    +(raw(c, 'svi') === null),
   ]
 }
 
@@ -136,17 +246,23 @@ export function fitMeasure(
   const method = METHODS[measureId] ?? 'shrunk'
   const floor = NOISE_FLOOR[measureId] ?? 0
   const sign = higherIsBetter ? 1 : -1
+  const fromInterval = SE_FROM_INTERVAL.has(measureId)
   const usable = rows.filter(r =>
-    method === 'cms_interval' ? r.lowerEstimate !== null && r.higherEstimate !== null : r.cases !== null && r.cases > 0
+    fromInterval ? r.lowerEstimate !== null && r.higherEstimate !== null : r.cases !== null && r.cases > 0
   )
-  const X = usable.map(features)
+  const scales = contextScales(usable)
+  const active = activeColumns(measureId)
+  const X = usable.map(r => {
+    const x = features(r, scales)
+    return active.map(j => x[j])
+  })
   const y = usable.map(r => r.score)
 
   // Per-hospital sampling variance (squared SE) of the published score.
   let noiseK: number | null = null
   let tau2Shrunk = 0
   let se2: number[]
-  if (method === 'cms_interval') {
+  if (fromInterval) {
     se2 = usable.map(r => ((r.higherEstimate! - r.lowerEstimate!) / (2 * Z_95)) ** 2)
   } else if (method === 'cms_smoothed') {
     // Rates are percentages: SE of a proportion p over n cases, in points.
@@ -184,16 +300,13 @@ export function fitMeasure(
   const margin = Math.sqrt(tau2)
 
   const results = usable.map((r, i): HospitalResult => {
-    // shrunk: shrink here. cms_smoothed: the published rate already is a
+    // shrunk: shrink here. cms_smoothed: the published score already is a
     // shrunk (posterior-mean) estimate, so keep it, but its uncertainty is the
-    // posterior SD, not the raw binomial SE, which would overstate it.
-    // cms_interval: CMS's own interval is used as published.
+    // posterior SD, not the raw sampling SE, which would overstate it.
     const post =
       method === 'shrunk'
         ? shrink(gaps[i], se2[i], tau2)
-        : method === 'cms_smoothed'
-          ? { mean: gaps[i], sd: Math.sqrt((tau2 * se2[i]) / (tau2 + se2[i])) }
-          : { mean: gaps[i], sd: Math.sqrt(se2[i]) }
+        : { mean: gaps[i], sd: Math.sqrt((tau2 * se2[i]) / (tau2 + se2[i])) }
     return {
       facilityId: r.facilityId,
       state: r.state,
@@ -210,8 +323,8 @@ export function fitMeasure(
   // Does context matter? Cross-validated R^2, with and without each group.
   const r2Cv = crossValidatedR2(X, y, w)
   const importance = Object.fromEntries(
-    Object.entries(GROUPS).map(([group, cols]) => {
-      const reduced = X.map(x => x.filter((_, j) => !cols.includes(j)))
+    Object.entries(GROUPS).filter(([, cols]) => cols.some(c => active.includes(c))).map(([group, cols]) => {
+      const reduced = X.map(x => x.filter((_, j) => !cols.includes(active[j])))
       return [group, r2Cv - crossValidatedR2(reduced, y, w)]
     })
   )
@@ -222,7 +335,7 @@ export function fitMeasure(
       hospitals: usable.length,
       r2: weightedR2(y, expected, w),
       r2Cv,
-      coefficients: Object.fromEntries(PREDICTORS.map((name, j) => [name, { estimate: beta[j], se: se[j] }])),
+      coefficients: Object.fromEntries(active.map((p, j) => [PREDICTORS[p], { estimate: beta[j], se: se[j] }])),
       importance,
       // How much adjusting reorders hospitals: raw (oriented) vs adjusted.
       rankAgreement: spearman(usable.map(r => sign * r.score), results.map(r => r.adjustedGap)),
@@ -246,7 +359,7 @@ export interface CompositeResult {
 }
 
 // Puts each measure's gaps in units of that measure's tau (the real spread of
-// performance), then averages them per hospital; measures are treated as
+// performance), capped at +-COMPOSITE_CAP, then averages them per hospital; measures are treated as
 // independent when combining uncertainty. The composite is then shrunk by its
 // own uncertainty, and the clear-cases margin is one SD of the real spread of
 // composites (the same rule as each measure, on the composite scale).
@@ -256,7 +369,7 @@ export function composite(byMeasure: { tau: number; results: HospitalResult[] }[
     if (!(tau > 0)) continue
     for (const r of results) {
       const entry = scaled.get(r.facilityId) ?? { state: r.state, values: [], ses: [] }
-      entry.values.push(r.adjustedGap / tau)
+      entry.values.push(Math.min(COMPOSITE_CAP, Math.max(-COMPOSITE_CAP, r.adjustedGap / tau)))
       entry.ses.push(r.gapSe / tau)
       scaled.set(r.facilityId, entry)
     }
@@ -301,12 +414,16 @@ export async function writeExpectedPerformance(db: Client, runId: number): Promi
            s.lower_estimate::float8 AS lower_estimate, s.higher_estimate::float8 AS higher_estimate,
            h.hospital_type, h.ownership,
            a.avg_inpatient_occupancy::float8 AS occupancy, a.stdzd_spend_pc::float8 AS spend,
-           a.dual_eligible_pct::float8 AS dual
+           a.dual_eligible_pct::float8 AS state_low_income,
+           c.dual_proportion AS ctx_dual, c.dsh_pct AS ctx_dsh, c.case_mix_index AS ctx_case_mix,
+           c.resident_bed_ratio AS ctx_teaching, c.svi_percentile AS ctx_svi, c.poverty150_pct AS ctx_poverty,
+           c.uninsured_pct AS ctx_uninsured, c.rural AS ctx_rural
     FROM analysis_measure_windows w
     JOIN measures m ON m.measure_id = w.measure_id
     JOIN measure_scores s ON s.measure_id = w.measure_id AND s.release_id = w.release_id AND s.score IS NOT NULL
     JOIN hospitals h ON h.facility_id = s.facility_id
     JOIN analysis_state_measure_live a ON a.measure_id = s.measure_id AND a.state = h.state
+    LEFT JOIN hospital_context c ON c.facility_id = s.facility_id
     WHERE a.avg_inpatient_occupancy IS NOT NULL AND a.stdzd_spend_pc IS NOT NULL AND a.dual_eligible_pct IS NOT NULL`)
 
   const fitted: { tau: number; results: HospitalResult[] }[] = []
@@ -319,7 +436,11 @@ export async function writeExpectedPerformance(db: Client, runId: number): Promi
         facilityId: r.facility_id, state: r.state, score: r.score, cases: r.cases,
         lowerEstimate: r.lower_estimate, higherEstimate: r.higher_estimate,
         hospitalType: r.hospital_type, ownership: r.ownership,
-        occupancy: r.occupancy, spend: r.spend, dual: r.dual,
+        occupancy: r.occupancy, spend: r.spend, stateLowIncome: r.state_low_income,
+        context: {
+          dual: r.ctx_dual, dsh: r.ctx_dsh, caseMix: r.ctx_case_mix, teaching: r.ctx_teaching,
+          svi: r.ctx_svi, poverty: r.ctx_poverty, uninsured: r.ctx_uninsured, rural: r.ctx_rural,
+        },
       }))
     )
     fitted.push({ tau: summary.tau, results })

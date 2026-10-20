@@ -4,6 +4,7 @@ import { href, useHashRoute } from './lib/router'
 import RankingsView from './views/RankingsView'
 import StatesView from './views/StatesView'
 import PerformanceView from './views/PerformanceView'
+import FinancesView from './views/FinancesView'
 import HospitalSearchView from './views/HospitalSearchView'
 import HospitalDetailView from './views/HospitalDetailView'
 
@@ -11,6 +12,7 @@ const SECTIONS = [
   { id: 'rankings', label: 'Rankings' },
   { id: 'performance', label: 'Expected vs. actual' },
   { id: 'states', label: 'States' },
+  { id: 'finances', label: 'Finances' },
   { id: 'hospitals', label: 'Hospitals' },
 ]
 
@@ -30,7 +32,7 @@ export default function App() {
             </h1>
             <p className="text-sm text-gray-500 mt-1">The report card hospitals didn't ask for, built from public CMS and CDC data.</p>
           </div>
-          <nav className="flex gap-1" aria-label="Sections">
+          <nav className="flex flex-wrap gap-1" aria-label="Sections">
             {SECTIONS.map(s => (
               <a
                 key={s.id}
@@ -49,8 +51,9 @@ export default function App() {
 
       {section === 'states' && <StatesView category={asCategory(arg)} />}
       {section === 'performance' && <PerformanceView category={asCategory(arg)} />}
+      {section === 'finances' && <FinancesView />}
       {section === 'hospitals' && (arg ? <HospitalDetailView id={arg} /> : <HospitalSearchView />)}
-      {!['states', 'performance', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
+      {!['states', 'performance', 'finances', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
     </div>
   )
 }

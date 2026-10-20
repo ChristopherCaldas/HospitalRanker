@@ -64,46 +64,80 @@ Heart attack mortality and the PSI 90 safety composite showed no association wit
 
 ## Expected vs. actual: ranking hospitals with their context in mind
 
-A raw ranking rewards hospitals with easy circumstances. The **Expected vs. actual** page compares each hospital with what hospitals like it, in states like its own, would be expected to score.
+A raw ranking rewards hospitals with easy circumstances. The **Expected vs. actual** page compares each hospital with what it would be expected to score given things it doesn't control.
 
-**First, does context matter?** For each measure, a weighted regression predicts scores from:
+**Fair context, not excuses.** For each measure, a weighted regression predicts scores from:
 - **peer group:** hospital type (critical access, VA, etc.) and ownership;
-- **state conditions:** bed occupancy, price-standardized Medicare spending, and low-income share, measured over the same period the score covers.
+- **patients:** the hospital's own share of dual-eligible (Medicare + Medicaid) stays and its low-income (DSH) patient percentage, from CMS's IPPS impact and HRRP files;
+- **community:** its county's CDC Social Vulnerability Index, poverty and uninsured rates, and whether it's rural;
+- **complexity:** case mix index and residents per bed. These are used **only for ER times and patient ratings**, which CMS doesn't risk-adjust. For mortality, readmissions and PSI 90, CMS already adjusts for patient risk, so case mix and teaching there would mostly measure what big academic centers are good at;
+- **state conditions:** bed occupancy, price-standardized Medicare spending and low-income share over the score's own period.
 
-Hospital size is deliberately left out, so larger hospitals keep credit for the quality that comes with volume. How much context explains is measured on hospitals the model didn't see (5-fold cross-validated R²):
+Deliberately left out:
+- **Hospital size**, so larger hospitals keep credit for the quality that comes with volume.
+- **Finances and staffing**, which are partly management's choices: adjusting for them would grade an understaffed hospital on a curve. Finances get their own page instead (below).
 
-| Measure | Explained by context | Biggest factor | Adjusting reshuffles the ranking? |
-|---|---|---|---|
-| ER wait times | 37% | Hospital type and ownership | Noticeably (rank correlation 0.70) |
-| Patient satisfaction | 22% | Hospital type and ownership | Somewhat (0.86) |
-| Readmissions, mortality, patient safety | ≤ 3% | n/a | Barely (≥ 0.96); CMS already risk-adjusts these |
+**Does context matter?** Measured on hospitals the model didn't see (5-fold cross-validated R²), before and after adding the hospital- and county-level context:
 
-State conditions add at most about 2 percentage points of explanatory power once hospital type is known. So the hypothesis that state strain and spending drive hospital results finds only weak support at the hospital level.
+| Measure | State context only | Fair context | Biggest factor | Rank correlation, raw vs. adjusted |
+|---|---|---|---|---|
+| ER wait times | 37% | **49%** | How complex its care is | 0.64 |
+| Patient satisfaction | 22% | **37%** | The hospital's patients (income) | 0.79 |
+| Readmissions | 3% | **8%** | Medicare spending, community | 0.90 |
+| 30-day mortality | 3% | **7%** | Its community | 0.92 |
+| Patient safety (PSI 90) | 0% | 2% | n/a | 0.92 |
+
+Before choosing these, I tested how much *any* state-level factor could add by fitting a separate term for every state: at most 3–6 points. Differences between hospitals in the same state are far larger than differences between states, so state tax revenue, income or similar figures can't fix a weak model. Hospital-level data can.
 
 **Then, who beats expectations?**
 - **Difference from expected** = actual minus expected, oriented so positive is better.
 - **Uncertainty is handled per measure:**
   - Raw measures (ER minutes, star ratings) are pulled toward their expected score in proportion to their noise (empirical Bayes). Star ratings also get a fixed rounding-noise floor.
-  - CMS's risk-standardized rates are already smoothed by CMS, so they aren't smoothed twice. Their posterior uncertainty is used instead.
-  - PSI 90 uses CMS's published interval.
+  - CMS's published mortality, readmission and PSI 90 scores are already smoothed by CMS, so they aren't smoothed twice; their posterior uncertainty is used instead. PSI 90's published interval is wider than the actual spread between hospitals, a sign that it's already smoothed.
 - **Clear cases only:** a hospital is labeled better or worse than expected only when its whole 95% interval is beyond one standard deviation of real hospital-to-hospital variation.
-- **Overall ranking:** hospitals with 3 or more measures get a composite (the average difference in those standard-deviation units), shrunk again so noisy hospitals can't top the list on luck. In the current run, 4 hospitals are clearly better than expected overall and 33 clearly worse, out of 3,049.
+- **Overall ranking:** hospitals with 3 or more measures get a composite score:
+  - the average difference from expected, in those standard-deviation units;
+  - **each measure capped at ±3**, so one extreme score can't decide the overall rank on its own (PSI 90 has a long bad tail);
+  - shrunk again, so noisy hospitals can't top the list on luck.
 
-The model's math (weighted least squares with standard errors, cross-validation, noise estimation, shrinkage) is unit-tested on synthetic hospitals with planted effects and outliers.
+  In the current run, 7 hospitals are clearly better than expected overall and 19 clearly worse, out of 3,049.
+- **Known limitation:** specialty hospitals (e.g. orthopedic, eye and ear) have high case mix and teaching scores but narrow emergency departments, so their expected ER times can be generous.
+
+The model's math (weighted least squares with standard errors, cross-validation, noise estimation, shrinkage, handling of missing context) is unit-tested on synthetic hospitals with planted effects and outliers.
 
 ### Up close, and a sanity check against other ratings
 
 **Trends.** CMS keeps a zip snapshot of every hospital file for each data refresh since 2019. `npm run ingest:archive` loads the last snapshot of each year as extra releases. That gives every hospital a yearly trend for each measure, drawn against the national median for the same period. The median matters because some shifts hit every hospital at once: heart failure readmissions jumped nationally in the 2025 period (median 19.6% → 21.3%).
 
-**The top and bottom 5** each get a card. It shows which measures put the hospital there (actual vs. expected), its trends since 2018, and short, linked summaries of news coverage, curated by hand in `backend/src/content/hospitalNotes.ts`. In the October 2026 run, the trends tell the story behind several of the bottom 5:
+**The top and bottom 5** each get a card. It shows:
+- which measures put the hospital there (actual vs. expected);
+- its trends since 2018;
+- short, linked summaries of news coverage, curated by hand in `backend/src/content/hospitalNotes.ts`.
+
+The trends also explain the hospitals flagged on patient safety:
 - **St Bernards (Jonesboro, AR):** PSI 90 safety score went 0.88 → 0.96 → 1.01 → 1.21 → 1.61 → 3.16 over six periods, the highest in the country.
-- **Beebe (Lewes, DE):** PSI 90 rose from 0.81 to 3.07.
-- **Mississippi Baptist:** PSI 90 rose from 0.87 to 2.43.
-- The national PSI 90 distribution didn't move over the same years (median 0.96, 99th percentile ~1.65), so these are hospital-specific changes, not a change in how CMS scores it.
+- **Beebe (Lewes, DE):** 0.81 → 3.07. **Mississippi Baptist:** 0.87 → 2.43.
+- The national PSI 90 distribution didn't move over the same years (median 0.96, 99th percentile ~1.65), so these are hospital-specific changes, not a change in how CMS scores safety.
 
 **Does the ranking agree with anyone else?**
-- **CMS overall star rating:** rank correlation 0.47 across 2,920 hospitals. The typical 5★ hospital ranks #573 of 3,049 here; the typical 1★ hospital ranks #2,522. Some agreement is built in, because CMS stars draw on the same five areas, but CMS stars don't adjust for hospital type or state.
-- **U.S. News Honor Roll 2026–27:** 4 of our top 5 are on its 20-hospital list (NYU Langone, Mayo Rochester, Mayo Arizona, NewYork-Presbyterian), and 13 of the 20 rank in our top third. The exceptions are informative. U.S. News rewards complex specialty care, while our five measures include everyday care where big academic centers often struggle: Rush's median ER stay is 370 minutes against 176 expected, and Cleveland Clinic's PSI 90 is 1.51.
+- **U.S. News Honor Roll 2026–27:**
+  - All 20 Honor Roll hospitals rank in our top third, up from 13 with state-only context.
+  - The typical one ranks #214 of 3,049, up from #767.
+  - 3 of our top 5 are on it: NYU Langone, NewYork-Presbyterian and Mayo Arizona. Mayo Rochester is #6.
+- **CMS overall star rating:** rank correlation 0.40 across 2,920 hospitals. The typical 5★ hospital ranks #685 here and the typical 1★ hospital #2,423. Agreement fell slightly from 0.47, as expected: CMS stars don't adjust for patients' income, and this ranking now does.
+
+## Follow the money: finances as diagnostics
+
+The **Finances** page and every hospital page show figures from each hospital's latest Medicare cost report (CMS Hospital Provider Cost Report, 5,188 hospitals). Each figure is shown against national and same-type medians:
+- margin on patient care, and overall margin after other income (donations, grants, government appropriations, investments);
+- uncompensated care;
+- Medicaid share of patient days;
+- contract staff, staff per bed and occupancy.
+
+What they show:
+- **Most hospitals lose money on patients and make it up elsewhere.** 55% lose money on patient care, but only 29% lose money overall. Government-run hospitals rely most on other income (median 13% of patient revenue).
+- **Money barely tracks beating expectations.** Margins have a rank correlation of only 0.06 with the context-adjusted score.
+- **Staffing tracks it more.** Hospitals that spend more on contract (agency) staff (−0.20) or run fuller (−0.17) tend to fall short of expectations. These are associations, not causes: a struggling hospital may hire agency staff *because* it's struggling.
 
 ## Roadmap (in progress)
 
@@ -117,6 +151,7 @@ The model's math (weighted least squares with standard errors, cross-validation,
 - [x] **Hospital explorer.** Search, plus a page per hospital showing every measure with its percentile within its state and nationally, and the state and national medians.
 - [x] **Expected vs. actual.** Context-adjusted rankings with a "does context matter?" check, a leaderboard of over- and under-performers, and expected scores on every hospital page.
 - [x] **Trends, spotlight and outside comparison.** Yearly history from CMS archive snapshots back to 2019, top and bottom 5 hospital cards with drivers, trends and sourced news, and a comparison with CMS stars and the U.S. News Honor Roll.
+- [x] **Fair context and finances.** Hospital- and county-level context (CMS IPPS impact and HRRP files, CDC Social Vulnerability Index) in the expected-score model, and a Finances page plus per-hospital finances from Medicare cost reports.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [x] **Tests and CI.** Unit, API and SQL integration tests; the SQL tests run every migration on in-process Postgres 18 and check the statistics against an independent implementation. CI runs on every PR.
 - [x] **Public deployment** on Vercel. The static frontend is served from the CDN, the Express API runs as a serverless function, and it connects as a read-only database role.
@@ -133,6 +168,7 @@ npm run ingest --workspace=backend     # pulls current CMS releases (~15s)
 npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
 npm run ingest:spend --workspace=backend   # pulls Medicare spending by state (~3s)
 npm run ingest:archive --workspace=backend # yearly CMS snapshots since 2019, for trends (~1.5 min, once)
+npm run ingest:context --workspace=backend # hospital context + cost-report finances (~1 min)
 npm run analyze --workspace=backend        # snapshots the strain/spend analysis (~2s)
 npm run dev                            # backend on :3001, frontend on :5173
 npm test                               # unit, API and SQL tests (SQL runs on in-process Postgres)
@@ -154,6 +190,9 @@ npm test                               # unit, API and SQL tests (SQL runs on in
 
 - [CMS Provider Data Catalog](https://data.cms.gov/provider-data/), Hospitals: Timely and Effective Care, Complications and Deaths, HCAHPS, Unplanned Hospital Visits, Hospital General Information.
 - [CMS Provider Data Catalog archived snapshots](https://data.cms.gov/provider-data/archived-data/hospitals), one per data refresh since 2019 (trends).
+- [CMS IPPS final rule impact file and HRRP supplemental file](https://www.cms.gov/medicare/payment/prospective-payment-systems/acute-inpatient-pps/fy-2027-ipps-final-rule-home-page) (case mix, teaching, low-income and dual-eligible shares).
+- [CMS Hospital Provider Cost Report](https://data.cms.gov/provider-compliance/cost-report/hospital-provider-cost-report) (finances).
+- [CDC/ATSDR Social Vulnerability Index](https://www.atsdr.cdc.gov/place-health/media/pdfs/2024/10/SVI2022Documentation.pdf), county level.
 - [CDC NHSN Weekly Hospital Respiratory Data by Jurisdiction](https://data.cdc.gov/d/ua7e-t2fy).
 - [CMS Medicare Geographic Variation, by National, State & County](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county).
 

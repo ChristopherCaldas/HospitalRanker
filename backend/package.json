@@ -10,6 +10,7 @@
     "ingest:strain": "tsx src/ingest/strain.ts",
     "ingest:spend": "tsx src/ingest/spend.ts",
     "ingest:archive": "tsx src/ingest/archive.ts",
+    "ingest:context": "tsx src/ingest/context.ts",
     "analyze": "tsx src/analysis/index.ts",
     "test": "vitest run",
     "create-readonly-role": "tsx src/db/createReadonlyRole.ts"

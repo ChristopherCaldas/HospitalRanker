@@ -13,10 +13,21 @@ export const PREDICTOR_LABELS: Record<string, string> = {
   occupancy_per_10pt: "10 points more of the state's hospital beds in use",
   medicare_spend_per_1k: '$1,000 more Medicare spending per person in the state',
   low_income_per_10pt: "10 points more of the state's Medicare patients on Medicaid too (low income)",
+  dual_eligible_per_10pt: "10 points more of the hospital's own Medicare patients also on Medicaid",
+  low_income_patients_per_10pt: '10 points more low-income patient days (CMS disproportionate-share percentage)',
+  case_mix_per_0_25: 'Case mix 0.25 higher (more complex inpatients)',
+  residents_per_bed_per_0_1: '0.1 more doctors in training per bed (teaching intensity)',
+  county_vulnerability_per_10pt: "County 10 percentiles higher on CDC's social vulnerability index",
+  county_poverty_per_10pt: '10 points more county residents near poverty',
+  county_uninsured_per_5pt: '5 points more county residents uninsured',
+  rural: 'Rural, vs. urban',
 }
 
 export const GROUP_LABELS: Record<string, { name: string; description: string }> = {
   peer_group: { name: 'Hospital type and ownership', description: 'critical access vs. acute care, VA, for-profit, government-run' },
+  patients: { name: "The hospital's patients", description: 'its share of low-income patients (dual-eligible and disproportionate-share)' },
+  complexity: { name: 'How complex its care is', description: 'case mix and teaching intensity (ER times and patient ratings only)' },
+  community: { name: 'Its community', description: "its county's social vulnerability, poverty and uninsured rates; rural or urban" },
   crowding: { name: 'How full hospitals were', description: "the state's bed occupancy over the period" },
   spending: { name: 'Medicare spending', description: 'price-adjusted spending per person in the state' },
   low_income: { name: 'Low-income share', description: "share of the state's Medicare patients also on Medicaid" },
