@@ -32,6 +32,8 @@ jobs:
       - run: npm ci
       - run: npm run migrate --workspace=backend
       - run: npm run ingest --workspace=backend -- ${{ inputs.force && '--force' || '' }}
+      # Yearly CMS archive snapshots for trends; a no-op until a new year's snapshot exists.
+      - run: npm run ingest:archive --workspace=backend
       # Medicare Geographic Variation is yearly; the monthly check is a no-op until a new release.
       - run: npm run ingest:spend --workspace=backend -- ${{ inputs.force && '--force' || '' }}
       # New snapshot only if a CMS release or spend version changed.

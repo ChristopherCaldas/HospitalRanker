@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { correlationStrength, formatMonth, formatPercentile, formatValue, shortComparison } from './format'
 import { DIVERGING_STEPS, divergingColor, sequentialColor, SEQUENTIAL_STEPS, textOn } from './colors'
 import { footnoteText } from './footnotes'
+import { drivers } from './performance'
 
 describe('formatValue', () => {
   it('formats each unit', () => {
@@ -83,5 +84,22 @@ describe('footnoteText', () => {
     ])
     expect(footnoteText('99')).toEqual(['CMS footnote 99.'])
     expect(footnoteText(null)).toEqual([])
+  })
+})
+
+describe('drivers', () => {
+  const m = (category: string, gapSd: number) => ({ category, actual: 0, expected: 0, gapSd })
+
+  it('lists the strong measures in the ranking direction, plus a notable counterpoint', () => {
+    const measures = [m('safety', -11.2), m('mortality', -2.5), m('wait_times', -1.3), m('readmission', -1.1), m('satisfaction', 1.4)]
+    const { main, counter } = drivers(measures, -1)
+    expect(main.map(d => d.category)).toEqual(['safety', 'mortality', 'wait_times'])
+    expect(counter?.category).toBe('satisfaction')
+  })
+
+  it('falls back to the single biggest measure and skips weak counterpoints', () => {
+    const { main, counter } = drivers([m('safety', 0.6), m('mortality', 0.2), m('wait_times', -0.5)], 1)
+    expect(main.map(d => d.category)).toEqual(['safety'])
+    expect(counter).toBeNull()
   })
 })

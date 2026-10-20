@@ -41,6 +41,7 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - `db/migrate.ts` — applies `backend/migrations/*.sql` in order over `DATABASE_URL_UNPOOLED`; `npm run migrate --workspace=backend`
 - `ingest/` — release-aware CMS ingestion; `npm run ingest --workspace=backend` (`-- --force` to redo current releases). Reads each dataset's metastore entry, skips CSVs already ingested for every wanted measure, otherwise downloads the CSV and stores it in one transaction. `datasets.ts` maps each dataset's CSV columns; `retry.ts` backs off on CMS 503s and HTML error pages.
 - `ingest/strain.ts` — CDC NHSN weekly state respiratory data (`ua7e-t2fy`); `npm run ingest:strain --workspace=backend`. Upserts the full series (CDC revises past weeks); skipped when the dataset's `rowsUpdatedAt` matches the last load in `source_loads`.
+- `ingest/archive.ts` — score history from CMS archive zips (`api/1/archive/aggregate/theme/hospitals/relative`); `npm run ingest:archive --workspace=backend`. Takes the last snapshot of each finished year since 2019, stores each CSV in it as a `cms_releases` row with `source = 'archive'` (download_url = `zip#inner path`), only for snapshots older than the dataset's live release (so "latest release" logic is untouched), and only for hospitals already in `hospitals`. File names changed over the years (2020 zips name files by dataset ID); `PSI_90_SAFETY` is aliased to `PSI_90`. `ingest/store.ts` holds the score insert shared with the live ingester.
 - `ingest/spend.ts` — CMS Medicare Geographic Variation PUF, state level, all ages; `npm run ingest:spend --workspace=backend`. Finds the current release in the `data.cms.gov/data.json` catalog (the entry's `identifier` is a stable URL serving the latest release); skipped when that release's `modified` + title is already in `source_loads`.
 
 ### Database (Postgres on Neon)
@@ -51,6 +52,7 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - `latest_measure_scores` (view) — scores from each dataset's newest complete release
 - `state_weekly_strain` — CDC weekly occupancy / ICU / COVID-flu-RSV admissions per jurisdiction (states, territories, `USA`, HHS regions), with per-metric `pct_*_coverage` (percent of hospitals reporting) and `reporting_period`. **May–Oct 2024 is `voluntary_2024`: ~37% national coverage**, so counts aren't comparable and percentages come from a self-selected subset. ~40 rows report occupancy >100%; kept raw, filter in analysis.
 - `state_medicare_spend` — Medicare spend per **Original Medicare (FFS)** beneficiary by state and year (2014+): actual and price-standardized (`*_stdzd_*`) total and inpatient, plus MA participation, dual-eligible share, age, readmission % and ER visits. No risk score in the file, so spend is price- but not risk-adjusted. Exclude or flag PR (96% MA, ~27k FFS benes) and VI in comparisons; standardization matters (AK: $12,050 actual vs $9,209 standardized in 2024).
+- `measure_score_history` (view, migration 009) — one score per hospital × measure × measurement period (newest release wins, NULL scores skipped); `services/history.ts` adds the national median per period (cached 1h in memory). Heart-failure readmissions shift up nationally in the 2025 period, so read trends against the median.
 - `source_loads` — which upstream version of a non-CMS source (CDC, Medicare GV) was loaded, and when
 
 ### Analysis (`migrations/006_analysis.sql`, `backend/src/analysis/index.ts`)
@@ -67,6 +69,7 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 - Uncertainty per `METHODS`: `shrunk` (OP_18b, HCAHPS; noise k/n from `noiseModel`, + 1/12 rounding floor for stars), `cms_smoothed` (MORT/READM: published rates are already posterior means → no second shrink, posterior SD sqrt(τ²se²/(τ²+se²)), τ = spread of gaps), `cms_interval` (PSI_90: CMS CI).
 - Verdicts are "clear cases only" (user decision): the 95% interval must clear a margin of τ (1 SD of real spread). Composite: gaps in τ units, averaged over ≥3 measures, shrunk again, margin = composite τ.
 - "Does context matter?" per measure: `r2_cv` (5-fold), `importance` (CV R² lost dropping each group), coefficients with SEs, `rank_agreement` (raw vs adjusted Spearman).
+- Spotlight + sanity check: `GET /api/performance/spotlight` (national top/bottom 5 with `breakdown` per measure, `history`, curated `notes`), `GET /api/performance/benchmarks` (composite vs CMS stars: crosstab + Spearman; U.S. News Honor Roll ranks + each one's weakest measure). Curated content lives in `backend/src/content/hospitalNotes.ts` (summaries in our own words, linked, press releases labelled; `NOTES_CHECKED` date). Hospital detail also returns `history`, `notes`, `usNewsHonorRoll`.
 - API: `GET /api/performance/context`, `GET /api/performance?state=&limit=`, `GET /api/performance/:category`; hospital detail includes `performance`. UI: `views/PerformanceView.tsx` (`#/performance/:category`), labels in `lib/performance.ts`.
 
 ### Deployment (Vercel)
@@ -76,7 +79,7 @@ Two-package npm workspace: `frontend/` and `backend/`. No shared package — typ
 
 ### Scheduled ingestion
 Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyze` last.
-- `.github/workflows/ingest.yml` — CMS hospital measures + Medicare spend, monthly (1st) + manual dispatch (optionally forced)
+- `.github/workflows/ingest.yml` — CMS hospital measures + yearly archive snapshots + Medicare spend, monthly (1st) + manual dispatch (optionally forced)
 - `.github/workflows/ingest-strain.yml` — CDC, weekly (Saturday) + manual dispatch
 
 ### Frontend (`frontend/src/`)
@@ -87,6 +90,7 @@ Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyz
 - `views/StatesView.tsx` — factor picker, finding sentence (FDR q < 0.05 bar), `TileMap` + `Scatter` sharing a highlighted state, correlation table, data table
 - `views/HospitalSearchView.tsx` / `views/HospitalDetailView.tsx` — debounced search; per-measure cards with CI, verdict, medians and percentile meters
 - `components/TabNav.tsx` — category tab bar (links); `components/RankingSection.tsx` — score explanation, "How to read" panel, typical-hospital context line, best/worst layout; `components/RankingTable.tsx` — 5 hospitals with cases, CI and CMS verdict; `components/HowToRead.tsx` — collapsible glossary
+- `components/TrendChart.tsx` — small-multiple trend (hospital vs national median, measured width, per-unit minimum y-span, stars fixed 1–5, hover/arrow-key tooltip) + `TrendLegend`
 - `components/TileMap.tsx` — equal-area state tile grid (every state is one data point); `components/Scatter.tsx` — one-series SVG scatter drawn at measured pixel width, 24px hit targets, fit line, collision-aware labels for the 3 largest residuals
 - Charts follow the dataviz skill's specs (thin marks, 2px rings/gaps, one series = no legend box, tooltips on hover + focus, table view). The app is light-mode only.
 

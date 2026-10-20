@@ -2,9 +2,10 @@ import axios from 'axios'
 import { parse } from 'csv-parse'
 import { Client } from 'pg'
 import { requireEnv } from '../db/env'
-import { CsvRow, HOSPITAL_INFO_DATASET, MEASURE_DATASETS, ScoreRow } from './datasets'
+import { CsvRow, HOSPITAL_INFO_DATASET, MEASURE_DATASETS } from './datasets'
 import { toBool, toInt, toText } from './parse'
 import { withRetry } from './retry'
+import { insertScores } from './store'
 
 // Release-aware CMS ingestion. For each dataset, asks the CMS metastore for the
 // current CSV; if that CSV was already ingested it does nothing, otherwise it
@@ -85,33 +86,6 @@ async function upsertHospitals(db: Client, rows: CsvRow[]): Promise<void> {
       col('ZIP Code'), col('County/Parish'), col('Telephone Number'), col('Hospital Type'),
       col('Hospital Ownership'), rows.map(r => toBool(r['Emergency Services'])),
       rows.map(r => toInt(r['Hospital overall rating'])),
-    ]
-  )
-}
-
-async function insertScores(db: Client, releaseId: number, csvRows: CsvRow[], scores: ScoreRow[]): Promise<void> {
-  // A measure file can list a facility missing from General Information;
-  // give it a minimal hospitals row so the foreign key holds.
-  await db.query(
-    `INSERT INTO hospitals (facility_id, name, city, state)
-     SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
-     ON CONFLICT (facility_id) DO NOTHING`,
-    [
-      csvRows.map(r => r['Facility ID'].trim()), csvRows.map(r => toText(r['Facility Name'])),
-      csvRows.map(r => toText(r['City/Town'])), csvRows.map(r => toText(r['State'])),
-    ]
-  )
-  await db.query('DELETE FROM measure_scores WHERE release_id = $1', [releaseId])
-  const col = <K extends keyof ScoreRow>(key: K) => scores.map(s => s[key])
-  await db.query(
-    `INSERT INTO measure_scores (release_id, facility_id, measure_id, score, lower_estimate, higher_estimate,
-                                 denominator, compared_to_national, footnote, start_date, end_date)
-     SELECT $1, * FROM unnest($2::text[], $3::text[], $4::numeric[], $5::numeric[], $6::numeric[],
-                              $7::integer[], $8::text[], $9::text[], $10::date[], $11::date[])`,
-    [
-      releaseId, col('facility_id'), col('measure_id'), col('score'), col('lower_estimate'),
-      col('higher_estimate'), col('denominator'), col('compared_to_national'), col('footnote'),
-      col('start_date'), col('end_date'),
     ]
   )
 }

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
-import type { HospitalDetail, HospitalMeasure, HospitalPerformance } from '../types'
-import { VERDICT_LABELS, formatScore } from '../lib/performance'
+import type { HistoryPoint, HospitalDetail, HospitalMeasure, HospitalPerformance } from '../types'
+import { NOTE_KINDS, VERDICT_LABELS, formatScore } from '../lib/performance'
 import { CATEGORIES, COMPARISON_HELP, MEASURE_GUIDE, formatMonth, formatValue, shortComparison } from '../lib/format'
 import { footnoteText } from '../lib/footnotes'
 import { href } from '../lib/router'
+import TrendChart, { TrendLegend } from '../components/TrendChart'
 
 const TONE = {
   better: 'bg-green-50 text-green-800 border-green-200',
@@ -50,6 +51,9 @@ export default function HospitalDetailView({ id }: { id: string }) {
             CMS overall star rating: <strong>{hospital.overallRating} out of 5</strong>
           </p>
         )}
+        {hospital.usNewsHonorRoll && (
+          <p className="text-sm text-gray-700 mt-1">On the U.S. News Best Hospitals Honor Roll (2026–27).</p>
+        )}
       </div>
 
       {hospital.performance.overall && (
@@ -75,10 +79,34 @@ export default function HospitalDetailView({ id }: { id: string }) {
         </section>
       )}
 
-      <p className="text-sm text-gray-600">
-        How this hospital did on each measure, and how that compares with other hospitals in {hospital.state} and
-        across the country.
-      </p>
+      {hospital.notes.length > 0 && (
+        <section className="bg-white border border-gray-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-800">In the news</h3>
+          <ul className="mt-2 space-y-2 text-sm text-gray-700">
+            {hospital.notes.map(n => (
+              <li key={n.url}>
+                <span className="text-xs text-gray-500">{NOTE_KINDS[n.kind]} · </span>
+                {n.summary}{' '}
+                <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline whitespace-nowrap">
+                  {n.source}, {formatMonth(n.published)} ↗
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-gray-400 mt-2">
+            Summarized in our own words from the linked sources. Items marked as a hospital press release are the
+            hospital's own claims.
+          </p>
+        </section>
+      )}
+
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm text-gray-600">
+          How this hospital did on each measure, how that compares with other hospitals in {hospital.state} and across
+          the country, and how it has changed since 2018.
+        </p>
+        <TrendLegend />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {hospital.measures.map(m => (
@@ -87,6 +115,7 @@ export default function HospitalDetailView({ id }: { id: string }) {
             m={m}
             state={hospital.state}
             perf={hospital.performance.measures.find(p => p.category === m.category) ?? null}
+            history={hospital.history[m.category] ?? []}
           />
         ))}
       </div>
@@ -99,10 +128,11 @@ export default function HospitalDetailView({ id }: { id: string }) {
   )
 }
 
-function MeasureCard({ m, state, perf }: {
+function MeasureCard({ m, state, perf, history }: {
   m: HospitalMeasure
   state: string | null
   perf: HospitalPerformance['measures'][number] | null
+  history: HistoryPoint[]
 }) {
   const label = CATEGORIES.find(c => c.id === m.category)?.label ?? m.name
   const guide = MEASURE_GUIDE[m.category]
@@ -169,6 +199,12 @@ function MeasureCard({ m, state, perf }: {
             <PercentileBar label="Nationwide" value={m.nationalPercentile} of="of hospitals nationwide" />
           </div>
         </>
+      )}
+
+      {history.length > 1 && (
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <TrendChart label="Trend" points={history} unit={m.unit} higherIsBetter={m.higherIsBetter} />
+        </div>
       )}
     </section>
   )

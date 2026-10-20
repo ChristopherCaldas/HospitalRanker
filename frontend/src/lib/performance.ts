@@ -41,3 +41,28 @@ export function reshuffle(rankAgreement: number): string {
 export function formatScore(score: number): string {
   return `${score >= 0 ? '+' : '−'}${Math.abs(score).toFixed(2)}`
 }
+
+export const NOTE_KINDS: Record<'news' | 'recognition' | 'rating', string> = {
+  news: 'News',
+  recognition: 'Ranking or award',
+  rating: 'Rating',
+}
+
+interface Driver {
+  category: string
+  actual: number
+  expected: number
+  gapSd: number
+}
+
+// What puts a hospital near the top (direction +1) or bottom (-1): its measures
+// furthest from expected in that direction (at least 1 typical spread, up to
+// 3), plus its strongest measure the other way, if notable.
+export function drivers<T extends Driver>(measures: T[], direction: 1 | -1): { main: T[]; counter: T | null } {
+  const sorted = [...measures].sort((a, b) => direction * (b.gapSd - a.gapSd))
+  const strong = sorted.filter(m => direction * m.gapSd >= 1).slice(0, 3)
+  const main = strong.length ? strong : sorted.slice(0, 1)
+  const other = sorted[sorted.length - 1]
+  const counter = other && !main.includes(other) && -direction * other.gapSd >= 1 ? other : null
+  return { main, counter }
+}

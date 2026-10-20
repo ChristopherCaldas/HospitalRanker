@@ -91,6 +91,20 @@ State conditions add at most about 2 percentage points of explanatory power once
 
 The model's math (weighted least squares with standard errors, cross-validation, noise estimation, shrinkage) is unit-tested on synthetic hospitals with planted effects and outliers.
 
+### Up close, and a sanity check against other ratings
+
+**Trends.** CMS keeps a zip snapshot of every hospital file for each data refresh since 2019. `npm run ingest:archive` loads the last snapshot of each year as extra releases. That gives every hospital a yearly trend for each measure, drawn against the national median for the same period. The median matters because some shifts hit every hospital at once: heart failure readmissions jumped nationally in the 2025 period (median 19.6% → 21.3%).
+
+**The top and bottom 5** each get a card. It shows which measures put the hospital there (actual vs. expected), its trends since 2018, and short, linked summaries of news coverage, curated by hand in `backend/src/content/hospitalNotes.ts`. In the October 2026 run, the trends tell the story behind several of the bottom 5:
+- **St Bernards (Jonesboro, AR):** PSI 90 safety score went 0.88 → 0.96 → 1.01 → 1.21 → 1.61 → 3.16 over six periods, the highest in the country.
+- **Beebe (Lewes, DE):** PSI 90 rose from 0.81 to 3.07.
+- **Mississippi Baptist:** PSI 90 rose from 0.87 to 2.43.
+- The national PSI 90 distribution didn't move over the same years (median 0.96, 99th percentile ~1.65), so these are hospital-specific changes, not a change in how CMS scores it.
+
+**Does the ranking agree with anyone else?**
+- **CMS overall star rating:** rank correlation 0.47 across 2,920 hospitals. The typical 5★ hospital ranks #573 of 3,049 here; the typical 1★ hospital ranks #2,522. Some agreement is built in, because CMS stars draw on the same five areas, but CMS stars don't adjust for hospital type or state.
+- **U.S. News Honor Roll 2026–27:** 4 of our top 5 are on its 20-hospital list (NYU Langone, Mayo Rochester, Mayo Arizona, NewYork-Presbyterian), and 13 of the 20 rank in our top third. The exceptions are informative. U.S. News rewards complex specialty care, while our five measures include everyday care where big academic centers often struggle: Rush's median ER stay is 370 minutes against 176 expected, and Cleveland Clinic's PSI 90 is 1.51.
+
 ## Roadmap (in progress)
 
 - [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
@@ -102,6 +116,7 @@ The model's math (weighted least squares with standard errors, cross-validation,
 - [x] **Show the analysis in the app.** A States view with an equal-area tile map, a strain or spending scatter plot with its fit line, a plain-language finding, and the full correlation table.
 - [x] **Hospital explorer.** Search, plus a page per hospital showing every measure with its percentile within its state and nationally, and the state and national medians.
 - [x] **Expected vs. actual.** Context-adjusted rankings with a "does context matter?" check, a leaderboard of over- and under-performers, and expected scores on every hospital page.
+- [x] **Trends, spotlight and outside comparison.** Yearly history from CMS archive snapshots back to 2019, top and bottom 5 hospital cards with drivers, trends and sourced news, and a comparison with CMS stars and the U.S. News Honor Roll.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [x] **Tests and CI.** Unit, API and SQL integration tests; the SQL tests run every migration on in-process Postgres 18 and check the statistics against an independent implementation. CI runs on every PR.
 - [x] **Public deployment** on Vercel. The static frontend is served from the CDN, the Express API runs as a serverless function, and it connects as a read-only database role.
@@ -117,6 +132,7 @@ npm run migrate --workspace=backend
 npm run ingest --workspace=backend     # pulls current CMS releases (~15s)
 npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
 npm run ingest:spend --workspace=backend   # pulls Medicare spending by state (~3s)
+npm run ingest:archive --workspace=backend # yearly CMS snapshots since 2019, for trends (~1.5 min, once)
 npm run analyze --workspace=backend        # snapshots the strain/spend analysis (~2s)
 npm run dev                            # backend on :3001, frontend on :5173
 npm test                               # unit, API and SQL tests (SQL runs on in-process Postgres)
@@ -137,6 +153,7 @@ npm test                               # unit, API and SQL tests (SQL runs on in
 ## Data sources
 
 - [CMS Provider Data Catalog](https://data.cms.gov/provider-data/), Hospitals: Timely and Effective Care, Complications and Deaths, HCAHPS, Unplanned Hospital Visits, Hospital General Information.
+- [CMS Provider Data Catalog archived snapshots](https://data.cms.gov/provider-data/archived-data/hospitals), one per data refresh since 2019 (trends).
 - [CDC NHSN Weekly Hospital Respiratory Data by Jurisdiction](https://data.cdc.gov/d/ua7e-t2fy).
 - [CMS Medicare Geographic Variation, by National, State & County](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county).
 

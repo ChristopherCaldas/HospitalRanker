@@ -9,6 +9,7 @@
     "ingest": "tsx src/ingest/index.ts",
     "ingest:strain": "tsx src/ingest/strain.ts",
     "ingest:spend": "tsx src/ingest/spend.ts",
+    "ingest:archive": "tsx src/ingest/archive.ts",
     "analyze": "tsx src/analysis/index.ts",
     "test": "vitest run",
     "create-readonly-role": "tsx src/db/createReadonlyRole.ts"
@@ -19,7 +20,8 @@
     "cors": "^2.8.5",
     "csv-parse": "^7.0.3",
     "express": "^4.18.2",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.10",
@@ -28,6 +30,7 @@
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "@types/yauzl": "^3.4.0",
     "supertest": "^7.3.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
