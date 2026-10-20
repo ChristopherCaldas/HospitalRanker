@@ -114,6 +114,50 @@ export const HOSPITAL_NOTES: Record<string, HospitalNote[]> = {
       published: '2023-11-14',
     },
   ],
+  // Grady Memorial Hospital, Atlanta GA
+  '110079': [
+    {
+      kind: 'news',
+      summary:
+        'Announced a $1 billion-plus South Fulton campus, including a 200-bed hospital due in 2031. Grady says its main emergency department handles about 155,000 visits a year.',
+      source: 'Times-Herald',
+      url: 'https://www.times-herald.com/news/grady-to-build-1b-south-fulton-medical-campus/article_41d4018a-829f-42fc-a7f4-ec3e5ae5413a.html',
+      published: '2026-03-19',
+    },
+    {
+      kind: 'news',
+      summary:
+        'Plans a freestanding emergency department in Union City, responding to demand after the closures of Atlanta Medical Center and its south campus (hospital press release).',
+      source: 'Grady Health System',
+      url: 'https://www.gradyhealth.org/news/grady-to-build-freestanding-emergency-department-in-south-fulton-county',
+      published: '2024-04-17',
+    },
+  ],
+  // Huntsville Hospital, Huntsville AL
+  '010039': [
+    {
+      kind: 'news',
+      summary:
+        'Seeking approval for two freestanding emergency departments (about $30 million each) and adding six beds to the Madison Hospital ER, citing rapid population growth.',
+      source: 'WAFF',
+      url: 'https://www.waff.com/2025/07/14/huntsville-hospital-seeking-establish-free-standing-emergency-departments-hampton-cove-north-huntsville/',
+      published: '2025-07-14',
+    },
+  ],
+  // Pikeville Medical Center, Pikeville KY
+  '180044': [
+    {
+      kind: 'news',
+      summary:
+        "Joined the University of Kentucky's heart and vascular affiliate network for cardiac training and accreditation support. It describes itself as Kentucky's only level II trauma center, with 348 beds.",
+      source: 'UKNow (University of Kentucky)',
+      url: 'https://uknow.uky.edu/node/259821',
+      published: '2026-01-22',
+    },
+  ],
+  // Spectrum Health (Corewell Health Butterworth), Grand Rapids MI;
+  // Columbia Memorial Hospital, Hudson NY; Memorial Medical Center
+  // (Springfield Memorial), Springfield IL: no recent coverage confirmed.
   // Erie County Medical Center, Buffalo NY
   '330219': [
     {
