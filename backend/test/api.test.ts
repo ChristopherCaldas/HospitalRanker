@@ -9,6 +9,8 @@ vi.mock('../src/services/analysis', () => ({ getStateAnalysis: vi.fn() }))
 vi.mock('../src/services/hospitals', () => ({ searchHospitals: vi.fn(), getHospital: vi.fn() }))
 vi.mock('../src/services/finances', () => ({ getFinanceOverview: vi.fn(), getHospitalFinance: vi.fn() }))
 vi.mock('../src/services/history', () => ({ getHistories: vi.fn() }))
+vi.mock('../src/services/predictors', () => ({ getPredictors: vi.fn() }))
+vi.mock('../src/services/movers', () => ({ getMovers: vi.fn(), getHospitalMovers: vi.fn() }))
 vi.mock('../src/services/performance', () => ({
   getHospitalPerformance: vi.fn(), getContextSummary: vi.fn(), getLeaderboard: vi.fn(),
   getMeasurePerformance: vi.fn(), getSpotlight: vi.fn(), getBenchmarks: vi.fn(),
@@ -21,6 +23,8 @@ const { getStateAnalysis } = await import('../src/services/analysis')
 const { searchHospitals, getHospital } = await import('../src/services/hospitals')
 const { getFinanceOverview, getHospitalFinance } = await import('../src/services/finances')
 const { getHistories } = await import('../src/services/history')
+const { getPredictors } = await import('../src/services/predictors')
+const { getMovers, getHospitalMovers } = await import('../src/services/movers')
 const { getHospitalPerformance } = await import('../src/services/performance')
 
 beforeEach(() => {
@@ -101,9 +105,13 @@ describe('GET /api/hospitals', () => {
     vi.mocked(getHospitalPerformance).mockResolvedValue({ measures: [], overall: null })
     vi.mocked(getHistories).mockResolvedValue({ '330399': { safety: [] } })
     vi.mocked(getHospitalFinance).mockResolvedValue({ finance: { beds: 283 }, context: null } as never)
+    vi.mocked(getHospitalMovers).mockResolvedValue({ readmission: { verdict: 'declined', from: '2022-06-30', to: '2025-06-30', change: -3, changeSe: 0.5 } })
     const res = await request(app).get('/api/hospitals/330399')
     expect(res.status).toBe(200)
-    expect(res.body).toMatchObject({ history: { safety: [] }, finance: { beds: 283 }, context: null, usNewsHonorRoll: false })
+    expect(res.body).toMatchObject({
+      history: { safety: [] }, finance: { beds: 283 }, context: null, usNewsHonorRoll: false,
+      movers: { readmission: { verdict: 'declined' } },
+    })
     expect(res.body.notes.length).toBeGreaterThan(0)
   })
 })
@@ -114,5 +122,23 @@ describe('GET /api/finances', () => {
     expect((await request(app).get('/api/finances')).body).toEqual({ hospitals: 5188 })
     vi.mocked(getFinanceOverview).mockRejectedValue(new Error('boom'))
     expect((await request(app).get('/api/finances')).status).toBe(500)
+  })
+})
+
+describe('GET /api/predictors', () => {
+  it('returns the analysis, and 500 when the query fails', async () => {
+    vi.mocked(getPredictors).mockResolvedValue({ runId: 12, computedAt: null, measures: [], correlations: [] })
+    expect((await request(app).get('/api/predictors')).body).toMatchObject({ runId: 12 })
+    vi.mocked(getPredictors).mockRejectedValue(new Error('boom'))
+    expect((await request(app).get('/api/predictors')).status).toBe(500)
+  })
+})
+
+describe('GET /api/movers', () => {
+  it('returns the analysis, and 500 when the query fails', async () => {
+    vi.mocked(getMovers).mockResolvedValue([])
+    expect((await request(app).get('/api/movers')).body).toEqual([])
+    vi.mocked(getMovers).mockRejectedValue(new Error('boom'))
+    expect((await request(app).get('/api/movers')).status).toBe(500)
   })
 })

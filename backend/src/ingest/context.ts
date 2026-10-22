@@ -1,4 +1,6 @@
 import axios from 'axios'
+import fs from 'fs'
+import path from 'path'
 import { parse } from 'csv-parse/sync'
 import { Client } from 'pg'
 import yauzl from 'yauzl'
@@ -15,6 +17,11 @@ import { withRetry } from './retry'
 //   - CMS Hospital Provider Cost Report PUF (data.cms.gov, yearly): finances.
 //     The newest two years are read and each hospital's latest report kept.
 //   - CDC/ATSDR Social Vulnerability Index, county level (every two years).
+//   - AHRQ Compendium of U.S. Health Systems, hospital linkage file: which
+//     health system (if any) each hospital belongs to. Checked in under
+//     backend/data (columns trimmed): ahrq.gov blocks scripted downloads and
+//     publishes a new edition only every year or two. Replace the file and
+//     AHRQ_YEAR when a new one comes out.
 // Skipped when the combination of file versions was already loaded.
 //
 //   npm run ingest:context --workspace=backend            # only if something changed
@@ -26,6 +33,8 @@ const IPPS_PAGE = (fy: number) =>
 const CATALOG = 'https://data.cms.gov/data.json'
 const SVI_YEARS = [2026, 2024, 2022]
 const SVI_URL = (year: number) => `https://svi.cdc.gov/Documents/Data/${year}/csv/states_counties/SVI_${year}_US_county.csv`
+const AHRQ_YEAR = 2023
+const AHRQ_FILE = path.join(__dirname, `../../data/ahrq-hospital-linkage-${AHRQ_YEAR}.csv`)
 const force = process.argv.includes('--force')
 
 const ccn = (v: string | undefined) => (v ?? '').trim().padStart(6, '0')
@@ -97,6 +106,24 @@ export function countyKey(state: string, county: string): string {
   return `${state}|${name}`
 }
 
+export interface SystemRow { systemId: string | null; systemName: string | null; systemHospitals: number }
+
+// Hospital linkage rows -> system per CCN. System size counts every hospital
+// in the file linked to the same system; unaffiliated hospitals count as 1.
+export function systemRows(rows: Record<string, string>[]): Map<string, SystemRow> {
+  const size = new Map<string, number>()
+  for (const r of rows) if (r.health_sys_id) size.set(r.health_sys_id, (size.get(r.health_sys_id) ?? 0) + 1)
+  return new Map(
+    rows
+      .filter(r => r.ccn)
+      .map(r => [ccn(r.ccn), {
+        systemId: r.health_sys_id || null,
+        systemName: r.health_sys_name || null,
+        systemHospitals: r.health_sys_id ? size.get(r.health_sys_id)! : 1,
+      }])
+  )
+}
+
 // Cost report column -> hospital_finance column.
 export const COST_FIELDS: Record<string, string> = {
   'Number of Beds': 'beds',
@@ -115,6 +142,13 @@ export const COST_FIELDS: Record<string, string> = {
   'FTE - Employees on Payroll': 'fte_employees',
   'Total Salaries From Worksheet A': 'salaries',
   'Contract Labor: Direct Patient Care': 'contract_labor',
+  'Total Discharges (V + XVIII + XIX + Unknown)': 'total_discharges',
+  'Investments': 'investments',
+  'Total Assets': 'total_assets',
+  'Total Liabilities': 'total_liabilities',
+  'Total Current Assets': 'current_assets',
+  'Total Current Liabilities': 'current_liabilities',
+  'Total Fixed Assets': 'fixed_assets',
 }
 
 export interface CostRow {
@@ -145,7 +179,7 @@ export function latestReports(rows: CostRow[]): Map<string, CostRow> {
   return out
 }
 
-async function get(url: string, responseType: 'text' | 'arraybuffer' = 'text') {
+export async function get(url: string, responseType: 'text' | 'arraybuffer' = 'text') {
   return withRetry(`download ${url}`, async () => {
     const { data } = await axios.get(url, { responseType, timeout: 300_000 })
     return data
@@ -191,16 +225,21 @@ async function findIpps(): Promise<{ fy: number; impactUrl: string; hrrpUrl: str
   throw new Error('no IPPS final rule page with an impact file and HRRP supplemental file')
 }
 
-async function findCostReports(): Promise<{ title: string; url: string }[]> {
+// Every yearly Hospital Provider Cost Report CSV in the catalog, newest first.
+// `year` is the file's year (roughly the fiscal year that began then).
+export async function costReportFiles(): Promise<{ title: string; year: number; url: string }[]> {
   const { data } = await withRetry('cms catalog', () => axios.get(CATALOG, { timeout: 120_000 }))
   const entries = (data.dataset as { title: string; distribution?: { downloadURL?: string; mediaType?: string }[] }[])
     .filter(d => /^Hospital Provider Cost Report : \d{4}/.test(d.title))
     .map(d => ({ title: d.title, url: d.distribution?.find(x => x.mediaType === 'text/csv')?.downloadURL }))
     .filter((d): d is { title: string; url: string } => !!d.url)
+    .map(d => ({ ...d, year: Number(d.title.match(/: (\d{4})/)![1]) }))
     .sort((a, b) => b.title.localeCompare(a.title))
   if (entries.length === 0) throw new Error('no Hospital Provider Cost Report in the CMS catalog')
-  return entries.slice(0, 2)
+  return entries
 }
+
+const findCostReports = async () => (await costReportFiles()).slice(0, 2)
 
 async function findSvi(): Promise<{ year: number; url: string }> {
   for (const year of SVI_YEARS) {
@@ -212,7 +251,7 @@ async function findSvi(): Promise<{ year: number; url: string }> {
 
 async function main() {
   const [ipps, costs, svi] = await Promise.all([findIpps(), findCostReports(), findSvi()])
-  const version = `IPPS FY${ipps.fy} | ${costs.map(c => c.title.replace('Hospital Provider Cost Report : ', 'cost ')).join(', ')} | SVI ${svi.year}`
+  const version = `IPPS FY${ipps.fy} | ${costs.map(c => c.title.replace('Hospital Provider Cost Report : ', 'cost ')).join(', ')} | SVI ${svi.year} | AHRQ ${AHRQ_YEAR}`
   const db = new Client({ connectionString: requireEnv('DATABASE_URL_UNPOOLED') })
   await db.connect()
   try {
@@ -246,6 +285,9 @@ async function main() {
       byName.set(key, byName.has(key) ? null : sviRow(r))
     }
 
+    // Health systems
+    const systems = systemRows(parse(fs.readFileSync(AHRQ_FILE), { columns: true, bom: true }) as Record<string, string>[])
+
     // Cost reports: newest file first, so its rows win ties
     const reports: CostRow[] = []
     for (const c of [...costs].reverse()) {
@@ -258,7 +300,7 @@ async function main() {
     )
     const hospitals = new Set(known.map(r => r.facility_id))
     const impactBy = new Map(impact.map(r => [r.facilityId, r]))
-    const sources = { ipps: `FY${ipps.fy} ${impactName}`, hrrp: `FY${ipps.fy}`, svi: svi.year }
+    const sources = { ipps: `FY${ipps.fy} ${impactName}`, hrrp: `FY${ipps.fy}`, svi: svi.year, ahrq: AHRQ_YEAR }
 
     await db.query('BEGIN')
     await db.query('DELETE FROM hospital_context')
@@ -271,17 +313,20 @@ async function main() {
           : h.state && h.county ? byName.get(countyKey(h.state, h.county)) ?? undefined : undefined
         // Critical access hospitals must be rural (or treated as rural) by law.
         const rural = im?.rural ?? (h.hospital_type === 'Critical Access Hospitals' ? true : null)
+        const sys = systems.get(id)
         return [id, im?.countyFips ?? null, rural, im?.dshPct ?? null, im?.caseMixIndex ?? null,
-          im?.residentBedRatio ?? null, dual.get(id) ?? null, area?.svi ?? null, area?.poverty150 ?? null, area?.uninsured ?? null]
+          im?.residentBedRatio ?? null, dual.get(id) ?? null, area?.svi ?? null, area?.poverty150 ?? null, area?.uninsured ?? null,
+          sys?.systemId ?? null, sys?.systemName ?? null, sys?.systemHospitals ?? null]
       })
       .filter(r => r.slice(1).some(v => v !== null && v !== undefined))
     const col = (rows: unknown[][], i: number) => rows.map(r => r[i])
     await db.query(
       `INSERT INTO hospital_context (facility_id, county_fips, rural, dsh_pct, case_mix_index, resident_bed_ratio,
-                                     dual_proportion, svi_percentile, poverty150_pct, uninsured_pct, sources)
-       SELECT *, $11::jsonb FROM unnest($1::text[], $2::text[], $3::boolean[], $4::float8[], $5::float8[], $6::float8[],
-                                        $7::float8[], $8::float8[], $9::float8[], $10::float8[])`,
-      [...Array.from({ length: 10 }, (_, i) => col(ctx, i)), JSON.stringify(sources)]
+                                     dual_proportion, svi_percentile, poverty150_pct, uninsured_pct,
+                                     system_id, system_name, system_hospitals, sources)
+       SELECT *, $14::jsonb FROM unnest($1::text[], $2::text[], $3::boolean[], $4::float8[], $5::float8[], $6::float8[],
+                                        $7::float8[], $8::float8[], $9::float8[], $10::float8[], $11::text[], $12::text[], $13::int[])`,
+      [...Array.from({ length: 13 }, (_, i) => col(ctx, i)), JSON.stringify(sources)]
     )
 
     await db.query('DELETE FROM hospital_finance')
@@ -303,7 +348,7 @@ async function main() {
 
     const { rows: coverage } = await db.query(`
       SELECT count(*) AS context, count(dual_proportion) AS dual, count(dsh_pct) AS dsh, count(case_mix_index) AS cmi,
-             count(svi_percentile) AS svi, (SELECT count(*) FROM hospital_finance) AS finance
+             count(svi_percentile) AS svi, count(system_hospitals) AS ahrq, count(system_id) AS in_system, (SELECT count(*) FROM hospital_finance) AS finance
       FROM hospital_context`)
     console.table(coverage)
   } catch (err) {

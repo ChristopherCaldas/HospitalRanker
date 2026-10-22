@@ -128,6 +128,12 @@ function ContextSection() {
             the States page.
           </p>
         )}
+        <p>
+          Which facts predict hospitals' <em>actual</em> results, including the money, staffing and track record left out
+          here? See{' '}
+          <a href={href('predictors')} className="text-blue-600 hover:underline">what predicts results</a>, which tests
+          the assumptions this project started from.
+        </p>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">

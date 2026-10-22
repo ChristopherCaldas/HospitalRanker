@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
-import type { ContextField, FinanceMetric, HistoryPoint, HospitalContext, HospitalDetail, HospitalFinance, HospitalMeasure, HospitalPerformance } from '../types'
+import type { ContextField, FinanceMetric, HistoryPoint, HospitalContext, HospitalDetail, HospitalFinance, HospitalMeasure, HospitalMover, HospitalPerformance } from '../types'
 import { CONTEXT_LABELS, FINANCE_LABELS, formatDollars, formatFinance } from '../lib/finance'
 import { NOTE_KINDS, VERDICT_LABELS, formatScore } from '../lib/performance'
 import { CATEGORIES, COMPARISON_HELP, MEASURE_GUIDE, formatMonth, formatValue, shortComparison } from '../lib/format'
 import { footnoteText } from '../lib/footnotes'
+import { MOVER_LABELS } from '../lib/movers'
 import { href } from '../lib/router'
 import TrendChart, { TrendLegend } from '../components/TrendChart'
 
@@ -122,6 +123,7 @@ export default function HospitalDetailView({ id }: { id: string }) {
             state={hospital.state}
             perf={hospital.performance.measures.find(p => p.category === m.category) ?? null}
             history={hospital.history[m.category] ?? []}
+            mover={hospital.movers?.[m.category] ?? null}
           />
         ))}
       </div>
@@ -134,11 +136,12 @@ export default function HospitalDetailView({ id }: { id: string }) {
   )
 }
 
-function MeasureCard({ m, state, perf, history }: {
+function MeasureCard({ m, state, perf, history, mover }: {
   m: HospitalMeasure
   state: string | null
   perf: HospitalPerformance['measures'][number] | null
   history: HistoryPoint[]
+  mover: HospitalMover | null
 }) {
   const label = CATEGORIES.find(c => c.id === m.category)?.label ?? m.name
   const guide = MEASURE_GUIDE[m.category]
@@ -210,6 +213,19 @@ function MeasureCard({ m, state, perf, history }: {
       {history.length > 1 && (
         <div className="mt-4 pt-3 border-t border-gray-100">
           <TrendChart label="Trend" points={history} unit={m.unit} higherIsBetter={m.higherIsBetter} />
+          {mover && (
+            <p className="text-xs text-gray-600 mt-2">
+              {formatMonth(mover.from)} to {formatMonth(mover.to)}:{' '}
+              {mover.verdict === 'steady' ? (
+                <span className="text-gray-500">no clear change once luck and regression to the mean are allowed for</span>
+              ) : (
+                <span className={`inline-block px-1.5 py-0.5 rounded border ${MOVER_LABELS[mover.verdict].className}`}>
+                  {MOVER_LABELS[mover.verdict].label}
+                </span>
+              )}{' '}
+              <a href={href('movers', m.category)} className="text-blue-600 hover:underline">Movers →</a>
+            </p>
+          )}
         </div>
       )}
     </section>

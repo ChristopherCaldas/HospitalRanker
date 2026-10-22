@@ -139,6 +139,44 @@ What they show:
 - **Money barely tracks beating expectations.** Margins have a rank correlation of only 0.06 with the context-adjusted score.
 - **Staffing tracks it more.** Hospitals that spend more on contract (agency) staff (−0.20) or run fuller (−0.17) tend to fall short of expectations. These are associations, not causes: a struggling hospital may hire agency staff *because* it's struggling.
 
+## What predicts results? Testing our own assumptions
+
+The project started from a few assumptions: hospitals would do worse in states whose hospitals were packed full or where Medicare spent less, in poorer states, and when they were losing money. The **What predicts results** page tests that against every public fact we could link to each hospital, predicting each measure's *actual* scores (not the expected-vs-actual gaps). Here anything counts, including money, staffing and past scores, because the question is what goes along with good results, not what to grade on a curve.
+
+`npm run analyze` fits a weighted regression per measure for 11 groups of facts: state conditions, profit margins, type and ownership, patients' incomes, community, complexity and teaching, size and volume, health-system membership (AHRQ Compendium), balance sheet and costs, staffing and occupancy, and the hospital's own earlier score from a period with no overlapping months. Each group is scored by 5-fold cross-validated R², alone and by how much it still adds once every other fact is known.
+
+Share of the differences between hospitals each model predicts (analysis run 12):
+
+| | ER waits | Satisfaction | Readmissions | Mortality | Patient safety |
+|---|---|---|---|---|---|
+| What we first assumed (state conditions + profit) | 13% | 9% | 2% | 3% | 1% |
+| Fair context (what expected scores use) | 50% | 37% | 14% | 11% | 1% |
+| Every hospital fact we have | 59% | 45% | 14% | 13% | 2% |
+| ...plus the hospital's own earlier score | 86% | 65% | 20% | 20% | 15% |
+
+What we learned:
+- **The starting assumptions were mostly wrong.** Profit margins correlate with no measure by more than 0.07. State crowding goes with longer ER waits (r −0.31), but adds about 1 point once the hospital's own size, type and patients are known.
+- **What kind of hospital it is matters for the patient experience, not much for clinical outcomes.** Size alone explains 49% of ER-wait differences (bigger hospitals wait longer), while no hospital fact explains more than 14% of mortality, readmission or patient-safety differences.
+- **The best predictor is the hospital's own track record, and it lasts.** ER waits from 2018 still correlate 0.80 with today's, and satisfaction 0.62. Mortality and readmissions correlate only about 0.3 across separate periods, but that barely fades over seven years. Something stable about each hospital matters that public data doesn't capture.
+- **Quality isn't one thing.** Scores on different measures barely go together (typical correlation 0.10), so being good at one says little about the others.
+
+These are associations, not causes.
+
+## Movers: who really changed, and could anyone have seen it coming?
+
+If track records predict so well, the hospitals that break from theirs are the interesting ones. The **Movers** page compares each hospital's latest period with the latest separate one about three years earlier (`npm run analyze`, `backend/src/analysis/movers.ts`):
+
+- **Regression to the mean first.** Hospitals in the worst fifth "improve" by themselves, and the best fifth "decline", because part of any score is luck: on mortality, the worst fifth improved 1.2 points more than the average hospital. Each hospital's end score is therefore compared with what that pull alone predicts from its noise-shrunk start score, not with zero.
+- **Clear cases only.** Changes are shrunk for sampling noise where CMS doesn't already, and a hospital counts as clearly improved or declined only if the 95% interval clears the typical real change.
+
+What it found (analysis run 13):
+- **Real change is rare.** 1.9% of hospital scores clearly changed, from under 0.1% (satisfaction, published in whole stars) to 3.3% (ER waits). Clear declines outnumber improvements on patient safety (83 vs 10) and readmissions (34 vs 15).
+- **Almost nothing predicts it.** Finances, staffing and size at the start, how they changed (yearly Medicare cost reports since 2017) and whether the hospital changed owners (779 CMS change-of-ownership records) explain at most 6% of who changed.
+- **Changing owners made no clear difference** on any measure: every estimate's 95% range includes zero, within ±0.4 typical changes.
+- Several of the decliners are the same hospitals the spotlight flagged independently (St Barnabas on readmissions; St Bernards, Beebe and Mississippi Baptist on patient safety).
+
+We also tested whether more public data could predict hospitals *without* their history: nurse counts, hospital age and accreditation (CMS Provider of Services file), private-equity and REIT owners (CMS All Owners), staff flu vaccination and sepsis care, hospital-level Medicare spending, and the rest of the patient survey. Together they added about 1 point. Public nurse counts are stale, and CMS flags only 4 scored hospitals as private-equity owned, so those questions can't be answered well with public data. These sources stayed in the research scripts, not the app.
+
 ## Roadmap (in progress)
 
 - [x] **Release-aware ingestion.** A scheduled job checks CMS dataset metadata and only re-ingests when a new release is published, so users never wait on CMS. Every release is kept, which enables trends and "biggest movers".
@@ -152,6 +190,8 @@ What they show:
 - [x] **Expected vs. actual.** Context-adjusted rankings with a "does context matter?" check, a leaderboard of over- and under-performers, and expected scores on every hospital page.
 - [x] **Trends, spotlight and outside comparison.** Yearly history from CMS archive snapshots back to 2019, top and bottom 5 hospital cards with drivers, trends and sourced news, and a comparison with CMS stars and the U.S. News Honor Roll.
 - [x] **Fair context and finances.** Hospital- and county-level context (CMS IPPS impact and HRRP files, CDC Social Vulnerability Index) in the expected-score model, and a Finances page plus per-hospital finances from Medicare cost reports.
+- [x] **What predicts results.** A predictor search across 11 groups of hospital facts, plus how long track records last and how measures relate, testing the project's original assumptions.
+- [x] **Movers.** Real change vs. noise and regression to the mean, the hospitals that clearly changed, and a test of whether finances, staffing or ownership changes predicted it.
 - [ ] **Power BI report.** A star-schema `reporting` layer of SQL views feeding a Power BI report kept in the repo as a `.pbip` project.
 - [x] **Tests and CI.** Unit, API and SQL integration tests; the SQL tests run every migration on in-process Postgres 18 and check the statistics against an independent implementation. CI runs on every PR.
 - [x] **Public deployment** on Vercel. The static frontend is served from the CDN, the Express API runs as a serverless function, and it connects as a read-only database role.
@@ -169,6 +209,7 @@ npm run ingest:strain --workspace=backend  # pulls CDC weekly state strain (~5s)
 npm run ingest:spend --workspace=backend   # pulls Medicare spending by state (~3s)
 npm run ingest:archive --workspace=backend # yearly CMS snapshots since 2019, for trends (~1.5 min, once)
 npm run ingest:context --workspace=backend # hospital context + cost-report finances (~1 min)
+npm run ingest:changes --workspace=backend # yearly cost reports since 2017 + ownership changes, for movers (~1 min)
 npm run analyze --workspace=backend        # snapshots the strain/spend analysis (~2s)
 npm run dev                            # backend on :3001, frontend on :5173
 npm test                               # unit, API and SQL tests (SQL runs on in-process Postgres)
@@ -192,6 +233,8 @@ npm test                               # unit, API and SQL tests (SQL runs on in
 - [CMS Provider Data Catalog archived snapshots](https://data.cms.gov/provider-data/archived-data/hospitals), one per data refresh since 2019 (trends).
 - [CMS IPPS final rule impact file and HRRP supplemental file](https://www.cms.gov/medicare/payment/prospective-payment-systems/acute-inpatient-pps/fy-2027-ipps-final-rule-home-page) (case mix, teaching, low-income and dual-eligible shares).
 - [CMS Hospital Provider Cost Report](https://data.cms.gov/provider-compliance/cost-report/hospital-provider-cost-report) (finances).
+- [AHRQ Compendium of U.S. Health Systems](https://www.ahrq.gov/chsp/data-resources/compendium.html), hospital linkage file (health-system membership; a trimmed 2023 copy is checked in under `backend/data` because ahrq.gov blocks scripted downloads).
+- [CMS Hospital Change of Ownership](https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospital-change-of-ownership) (ownership changes since 2016).
 - [CDC/ATSDR Social Vulnerability Index](https://www.atsdr.cdc.gov/place-health/media/pdfs/2024/10/SVI2022Documentation.pdf), county level.
 - [CDC NHSN Weekly Hospital Respiratory Data by Jurisdiction](https://data.cdc.gov/d/ua7e-t2fy).
 - [CMS Medicare Geographic Variation, by National, State & County](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county).

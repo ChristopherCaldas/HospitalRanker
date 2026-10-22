@@ -138,3 +138,103 @@ export function shrink(gap: number, se2: number, tau2: number): { mean: number; 
   const factor = tau2 / (tau2 + se2)
   return { mean: gap * factor, sd: Math.sqrt(factor * se2) }
 }
+
+// Weighted lasso (L1-penalized least squares) by coordinate descent:
+// minimizes sum w_i (y_i - b0 - x_i . b)^2 / (2 sum w) + lambda * sum |b_j|.
+// X has no intercept column; columns should be on comparable scales
+// (standardized) for the penalty to treat them alike. The intercept is
+// unpenalized. `start` warm-starts from a previous solution on the path.
+export function lasso(
+  X: number[][], y: number[], w: number[], lambda: number, start?: number[], { tol = 1e-7, maxIter = 1000 } = {}
+): { intercept: number; beta: number[] } {
+  const n = X.length
+  const p = X[0]?.length ?? 0
+  const sw = w.reduce((a, b) => a + b, 0)
+  const xm = Array.from({ length: p }, (_, j) => X.reduce((a, x, i) => a + w[i] * x[j], 0) / sw)
+  const ym = y.reduce((a, v, i) => a + w[i] * v, 0) / sw
+  const cols = Array.from({ length: p }, (_, j) => X.map(x => x[j] - xm[j]))
+  const ss = cols.map(c => c.reduce((a, v, i) => a + w[i] * v * v, 0) / sw)
+  const beta = start ? [...start] : new Array<number>(p).fill(0)
+  const r = y.map((v, i) => v - ym - cols.reduce((a, c, j) => a + c[i] * beta[j], 0))
+  for (let iter = 0; iter < maxIter; iter++) {
+    let change = 0
+    for (let j = 0; j < p; j++) {
+      if (ss[j] === 0) continue
+      const c = cols[j]
+      let rho = 0
+      for (let i = 0; i < n; i++) rho += w[i] * c[i] * r[i]
+      rho = rho / sw + ss[j] * beta[j]
+      const next = Math.sign(rho) * Math.max(0, Math.abs(rho) - lambda) / ss[j]
+      const d = next - beta[j]
+      if (d !== 0) {
+        for (let i = 0; i < n; i++) r[i] -= d * c[i]
+        beta[j] = next
+        change = Math.max(change, Math.abs(d) * Math.sqrt(ss[j]))
+      }
+    }
+    if (change < tol) break
+  }
+  return { intercept: ym - xm.reduce((a, m, j) => a + m * beta[j], 0), beta }
+}
+
+// Smallest lambda at which every coefficient is 0.
+export function lassoLambdaMax(X: number[][], y: number[], w: number[]): number {
+  const sw = w.reduce((a, b) => a + b, 0)
+  const ym = y.reduce((a, v, i) => a + w[i] * v, 0) / sw
+  let max = 0
+  for (let j = 0; j < (X[0]?.length ?? 0); j++) {
+    const xm = X.reduce((a, x, i) => a + w[i] * x[j], 0) / sw
+    const g = Math.abs(X.reduce((a, x, i) => a + w[i] * (x[j] - xm) * (y[i] - ym), 0) / sw)
+    max = Math.max(max, g)
+  }
+  return max
+}
+
+export interface LassoCv {
+  lambdas: number[]
+  cvR2: number[] // cross-validated weighted R^2 per lambda
+  cvSe: number[] // standard error of the cross-validated loss (in R^2 units) across folds
+  best: number // index of the lambda with the highest cross-validated R^2
+  oneSe: number // largest lambda within one SE of the best (the usual sparser choice)
+  path: number[][] // coefficients per lambda, fitted on all rows
+}
+
+// Lasso path with k-fold cross-validation (round-robin folds, as in
+// crossValidatedR2). Lambdas run log-spaced from lambdaMax down to
+// lambdaMax * minRatio.
+export function lassoCv(X: number[][], y: number[], w: number[], { folds = 5, steps = 40, minRatio = 1e-3 } = {}): LassoCv {
+  const max = lassoLambdaMax(X, y, w)
+  const lambdas = Array.from({ length: steps }, (_, k) => max * minRatio ** (k / (steps - 1)))
+  const sw = w.reduce((a, b) => a + b, 0)
+  const ym = y.reduce((a, v, i) => a + w[i] * v, 0) / sw
+  const sst = y.reduce((a, v, i) => a + w[i] * (v - ym) ** 2, 0)
+  // Squared error per fold per lambda.
+  const sse = lambdas.map(() => new Array<number>(folds).fill(0))
+  const foldSst = new Array<number>(folds).fill(0)
+  for (let f = 0; f < folds; f++) {
+    const train = X.map((_, i) => i).filter(i => i % folds !== f)
+    const test = X.map((_, i) => i).filter(i => i % folds === f)
+    let beta: number[] | undefined
+    for (let k = 0; k < lambdas.length; k++) {
+      const fit = lasso(train.map(i => X[i]), train.map(i => y[i]), train.map(i => w[i]), lambdas[k], beta)
+      beta = fit.beta
+      for (const i of test) sse[k][f] += w[i] * (y[i] - fit.intercept - predict(X[i], fit.beta)) ** 2
+    }
+    for (const i of test) foldSst[f] += w[i] * (y[i] - ym) ** 2
+  }
+  const cvR2 = sse.map(s => 1 - s.reduce((a, b) => a + b, 0) / sst)
+  const cvSe = sse.map(s => {
+    const r = s.map((v, f) => 1 - v / (foldSst[f] || 1))
+    const m = r.reduce((a, b) => a + b, 0) / folds
+    return Math.sqrt(r.reduce((a, v) => a + (v - m) ** 2, 0) / (folds - 1) / folds)
+  })
+  const best = cvR2.indexOf(Math.max(...cvR2))
+  const oneSe = cvR2.findIndex(v => v >= cvR2[best] - cvSe[best])
+  const path: number[][] = []
+  let beta: number[] | undefined
+  for (const l of lambdas) {
+    beta = lasso(X, y, w, l, beta).beta
+    path.push(beta)
+  }
+  return { lambdas, cvR2, cvSe, best, oneSe, path }
+}
