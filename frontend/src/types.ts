@@ -128,6 +128,16 @@ export interface HospitalDetail extends HospitalSummary {
   usNewsHonorRoll: boolean
   finance: HospitalFinance | null
   context: HospitalContext | null
+  movers?: Partial<Record<Category, HospitalMover>>
+}
+
+// Whether a hospital clearly changed on a measure between two periods (Movers).
+export interface HospitalMover {
+  verdict: 'improved' | 'steady' | 'declined'
+  from: string
+  to: string
+  change: number
+  changeSe: number
 }
 
 export type FinanceMetric =
@@ -323,4 +333,72 @@ export interface Benchmarks {
       weakest: { category: Category; unit: string; actual: number; expected: number; gapSd: number } | null
     }[]
   }
+}
+
+// "What predicts hospital results?" (GET /api/predictors). Shares are
+// cross-validated R^2 (0-1); r is oriented so + = goes with better scores.
+export interface PersistencePoint {
+  periodStart: string | null
+  periodEnd: string
+  yearsBack: number
+  overlapping: boolean
+  r: number
+  n: number
+}
+
+export interface MeasurePredictors {
+  measureId: string
+  category: Category
+  higherIsBetter: boolean
+  hospitals: number
+  groups: Record<string, { alone: number; added: number }>
+  variables: Record<string, { r: number; n: number; coverage: number }>
+  models: Record<'assumptions' | 'fair_context' | 'everything_known' | 'with_track_record', number>
+  noiseShare: number | null
+  persistence: PersistencePoint[]
+}
+
+export interface PredictorsOverview {
+  runId: number | null
+  computedAt: string | null
+  measures: MeasurePredictors[]
+  correlations: { a: string; b: string; r: number; n: number }[]
+}
+
+// "Movers" (GET /api/movers): real change between two periods after noise and
+// regression to the mean. Changes are oriented so + = better.
+export interface Mover {
+  facilityId: string
+  name: string
+  city: string | null
+  state: string | null
+  startScore: number
+  endScore: number
+  expectedEnd: number
+  change: number
+  changeSe: number
+  verdict: 'improved' | 'declined'
+  ownershipChange: boolean
+  history: HistoryPoint[]
+}
+
+export interface MeasureMovers {
+  measureId: string
+  category: Category
+  unit: string
+  higherIsBetter: boolean
+  from: { start: string; end: string }
+  to: { start: string; end: string }
+  hospitals: number
+  rtmSlope: number
+  tau: number
+  improved: number
+  declined: number
+  detectable: number
+  rawJumps: number
+  rawDrops: number
+  fifths: { fifth: number; hospitals: number; avgChange: number; se: number }[]
+  predictors: { groups: Record<string, { alone: number; added: number }>; variables: Record<string, { r: number; n: number }>; everything: number }
+  ownership: { hospitals: number; effect: number; se: number; improved: number; declined: number }
+  movers: Mover[]
 }

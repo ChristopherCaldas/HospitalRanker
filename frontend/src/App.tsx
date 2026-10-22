@@ -5,12 +5,16 @@ import RankingsView from './views/RankingsView'
 import StatesView from './views/StatesView'
 import PerformanceView from './views/PerformanceView'
 import FinancesView from './views/FinancesView'
+import PredictorsView from './views/PredictorsView'
+import MoversView from './views/MoversView'
 import HospitalSearchView from './views/HospitalSearchView'
 import HospitalDetailView from './views/HospitalDetailView'
 
 const SECTIONS = [
   { id: 'rankings', label: 'Rankings' },
   { id: 'performance', label: 'Expected vs. actual' },
+  { id: 'predictors', label: 'What predicts results' },
+  { id: 'movers', label: 'Movers' },
   { id: 'states', label: 'States' },
   { id: 'finances', label: 'Finances' },
   { id: 'hospitals', label: 'Hospitals' },
@@ -52,8 +56,10 @@ export default function App() {
       {section === 'states' && <StatesView category={asCategory(arg)} />}
       {section === 'performance' && <PerformanceView category={asCategory(arg)} />}
       {section === 'finances' && <FinancesView />}
+      {section === 'predictors' && <PredictorsView />}
+      {section === 'movers' && <MoversView category={asCategory(arg)} />}
       {section === 'hospitals' && (arg ? <HospitalDetailView id={arg} /> : <HospitalSearchView />)}
-      {!['states', 'performance', 'finances', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
+      {!['states', 'performance', 'finances', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
     </div>
   )
 }

@@ -11,7 +11,10 @@
     "ingest:spend": "tsx src/ingest/spend.ts",
     "ingest:archive": "tsx src/ingest/archive.ts",
     "ingest:context": "tsx src/ingest/context.ts",
+    "ingest:changes": "tsx src/ingest/changes.ts",
+    "ingest:access": "tsx src/ingest/access.ts",
     "analyze": "tsx src/analysis/index.ts",
+    "explore:access": "tsx src/analysis/explore/access.ts",
     "test": "vitest run",
     "create-readonly-role": "tsx src/db/createReadonlyRole.ts"
   },

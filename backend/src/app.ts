@@ -5,6 +5,8 @@ import analysisRouter from './routes/analysis'
 import hospitalsRouter from './routes/hospitals'
 import performanceRouter from './routes/performance'
 import financesRouter from './routes/finances'
+import predictorsRouter from './routes/predictors'
+import moversRouter from './routes/movers'
 import { pool } from './db/pool'
 
 // The Express app, separate from `listen` so tests can drive it directly.
@@ -17,6 +19,8 @@ app.use('/api/analysis', analysisRouter)
 app.use('/api/hospitals', hospitalsRouter)
 app.use('/api/performance', performanceRouter)
 app.use('/api/finances', financesRouter)
+app.use('/api/predictors', predictorsRouter)
+app.use('/api/movers', moversRouter)
 
 app.get('/api/health', async (_req, res) => {
   try {
