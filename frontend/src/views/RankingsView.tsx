@@ -5,6 +5,7 @@ import { CATEGORIES } from '../lib/format'
 import { href } from '../lib/router'
 import TabNav from '../components/TabNav'
 import RankingSection from '../components/RankingSection'
+import SiteGuide from '../components/SiteGuide'
 
 // Hospitals below this many cases can top a list on a handful of patients.
 const MIN_CASE_OPTIONS = [0, 25, 100, 500]
@@ -31,6 +32,8 @@ export default function RankingsView({ category }: { category: Category }) {
       <TabNav categories={CATEGORIES} active={category} hrefFor={c => href('rankings', c)} />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
+        <SiteGuide />
+
         <div className="flex flex-wrap items-center gap-2 mb-6 text-sm">
           <label htmlFor="min-cases" className="text-gray-600">Minimum cases</label>
           <select

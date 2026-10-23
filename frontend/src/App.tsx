@@ -9,16 +9,7 @@ import PredictorsView from './views/PredictorsView'
 import MoversView from './views/MoversView'
 import HospitalSearchView from './views/HospitalSearchView'
 import HospitalDetailView from './views/HospitalDetailView'
-
-const SECTIONS = [
-  { id: 'rankings', label: 'Rankings' },
-  { id: 'performance', label: 'Expected vs. actual' },
-  { id: 'predictors', label: 'What predicts results' },
-  { id: 'movers', label: 'Movers' },
-  { id: 'states', label: 'States' },
-  { id: 'finances', label: 'Finances' },
-  { id: 'hospitals', label: 'Hospitals' },
-]
+import { SECTIONS } from './components/SiteGuide'
 
 const asCategory = (value: string | undefined): Category =>
   CATEGORIES.some(c => c.id === value) ? (value as Category) : 'wait_times'
@@ -41,6 +32,7 @@ export default function App() {
               <a
                 key={s.id}
                 href={href(s.id)}
+                title={s.blurb}
                 aria-current={section === s.id ? 'page' : undefined}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium ${
                   section === s.id ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
