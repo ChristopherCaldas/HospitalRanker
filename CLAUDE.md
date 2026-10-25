@@ -94,12 +94,13 @@ Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyz
 - `.github/workflows/ingest-strain.yml` — CDC, weekly (Saturday) + manual dispatch
 
 ### Frontend (`frontend/src/`)
-- `App.tsx` — header + section nav; routes `#/rankings/:category`, `#/performance/:category`, `#/predictors`, `#/states/:category`, `#/finances`, `#/hospitals`, `#/hospitals/:id`
+- `App.tsx` — header + section nav; routes `#/rankings/:category`, `#/performance/:category`, `#/predictors`, `#/states/:category`, `#/finances`, `#/framework`, `#/hospitals`, `#/hospitals/:id`
 - `lib/router.ts` — tiny hash router (`useHashRoute`, `href`); `lib/format.ts` — `CATEGORIES`, `FACTORS`, value/percentile/date formatting; `lib/colors.ts` — sequential blue ramp and blue↔red diverging scale (red arm matched to blue's OKLab lightness), plus label ink-vs-white choice
 - `types.ts` — TypeScript interfaces mirroring the API responses
 - `views/RankingsView.tsx` — category tabs, min-cases filter (default 25), `RankingSection`
 - `views/StatesView.tsx` — factor picker, finding sentence (FDR q < 0.05 bar), `TileMap` + `Scatter` sharing a highlighted state, correlation table, data table
 - `views/HospitalSearchView.tsx` / `views/HospitalDetailView.tsx` — debounced search; per-measure cards with CI, verdict, medians and percentile meters
+- `views/FrameworkView.tsx` — static summary of Donabedian's structure–process–outcome framework and seven pillars, mapping site measures onto it, plus a U.S. News / Healthgrades / CMS stars comparison
 - `components/TabNav.tsx` — category tab bar (links); `components/RankingSection.tsx` — score explanation, "How to read" panel, typical-hospital context line, best/worst layout; `components/RankingTable.tsx` — 5 hospitals with cases, CI and CMS verdict; `components/HowToRead.tsx` — collapsible glossary
 - `components/TrendChart.tsx` — small-multiple trend (hospital vs national median, measured width, per-unit minimum y-span, stars fixed 1–5, hover/arrow-key tooltip) + `TrendLegend`
 - `components/TileMap.tsx` — equal-area state tile grid (every state is one data point); `components/Scatter.tsx` — one-series SVG scatter drawn at measured pixel width, 24px hit targets, fit line, collision-aware labels for the 3 largest residuals
