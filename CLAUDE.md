@@ -100,11 +100,12 @@ Both need the `DATABASE_URL_UNPOOLED` repo secret, run migrate first and `analyz
 - `.github/workflows/ingest-strain.yml` — CDC, weekly (Saturday) + manual dispatch
 
 ### Frontend (`frontend/src/`)
-- `App.tsx` — header + section nav; routes `#/rankings/:category`, `#/performance/:category`, `#/predictors`, `#/states/:category`, `#/finances`, `#/equity`, `#/framework`, `#/hospitals`, `#/hospitals/:id`
+- `App.tsx` — header + section nav; routes `#/rankings/:category`, `#/performance/:category`, `#/predictors`, `#/states/:category`, `#/finances`, `#/equity`, `#/profiles[/:slug-or-id[/:id]]`, `#/framework`, `#/hospitals`, `#/hospitals/:id`
 - `lib/router.ts` — tiny hash router (`useHashRoute`, `href`); `lib/format.ts` — `CATEGORIES`, `FACTORS`, value/percentile/date formatting; `lib/colors.ts` — sequential blue ramp and blue↔red diverging scale (red arm matched to blue's OKLab lightness), plus label ink-vs-white choice
 - `types.ts` — TypeScript interfaces mirroring the API responses
 - `views/RankingsView.tsx` — category tabs, min-cases filter (default 25), `RankingSection`
 - `views/StatesView.tsx` — factor picker, finding sentence (FDR q < 0.05 bar), `TileMap` + `Scatter` sharing a highlighted state, correlation table, data table
+- `views/ProfilesView.tsx` — in-depth hospital profiles (`ProfileReport`, SSR-tested): summary sentences from the data, domain/group breakdown, strengths/weaknesses, structure (reuses `ContextCard`/`FinanceCard` from the hospital page), cost, trends, system siblings. Featured tabs in `lib/profiles.ts` (`FEATURED`: Christiana, MedStar Washington Hospital Center, Catholic Health Long Island's six hospitals as a system comparison, Putnam); any hospital by CMS ID. Extras from `GET /api/hospitals/:id/profile` (`services/profile.ts`: AHRQ system + members, MSPB vs national/state, cost per case, pay, state ranks). `titleCase` tidies CMS's all-caps names.
 - `views/HospitalSearchView.tsx` / `views/HospitalDetailView.tsx` — debounced search; per-measure cards with CI, verdict, medians and percentile meters
 - `views/FrameworkView.tsx` — Donabedian's structure–process–outcome framework and seven pillars, mapping site measures onto it, the live chain test, plus a U.S. News / Healthgrades / CMS stars comparison
 - `components/DotChart.tsx` — dot-and-whisker over fifths, 1–2 series (blue/orange, validated), legend + direct labels for 2; `components/QualityBreakdown.tsx` — hospital page domain/group scores, peer rank and the all-measures table; labels in `lib/quality.ts`

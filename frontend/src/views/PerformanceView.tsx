@@ -232,7 +232,8 @@ const LEADERBOARD_SCOPES: Scope[] = ['overall', 'outcome', 'process', ...GROUPS]
 function LeaderboardSection() {
   const [state, setState] = useState('')
   const [scope, setScope] = useState<Scope>('overall')
-  const [groups, setGroups] = useState('')
+  // Full-service hospitals by default, as CMS compares like with like.
+  const [groups, setGroups] = useState('5')
   const [data, setData] = useState<Leaderboard | null>(null)
   const [error, setError] = useState(false)
 
@@ -264,17 +265,19 @@ function LeaderboardSection() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
-            value={groups}
-            onChange={e => setGroups(e.target.value)}
-            aria-label="Compare with"
-            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
-          >
-            <option value="">All hospitals</option>
-            <option value="5">Full-service (all 5 groups)</option>
-            <option value="4">4 measure groups</option>
-            <option value="3">3 measure groups</option>
-          </select>
+          <label className="flex items-center gap-1.5 text-sm text-gray-600">
+            Compare with
+            <select
+              value={groups}
+              onChange={e => setGroups(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
+            >
+              <option value="">All hospitals</option>
+              <option value="5">Full-service (all 5 groups)</option>
+              <option value="4">4 measure groups</option>
+              <option value="3">3 measure groups</option>
+            </select>
+          </label>
           <select
             value={state}
             onChange={e => setState(e.target.value)}
@@ -299,7 +302,9 @@ function LeaderboardSection() {
       </div>
       <p className="text-xs text-gray-500 -mt-2">
         {SCOPE_INFO[scope].help}{' '}
-        {scope === 'overall' && !groups && 'Specialty hospitals (orthopedic, surgical) report fewer groups and often top the full list; CMS compares hospitals only with others reporting the same number of groups, which the "Compare with" menu does.'}
+        {groups === '5'
+          ? 'Showing full-service hospitals, which report all five groups. Specialty hospitals (orthopedic, surgical) report fewer groups; CMS compares hospitals only with others reporting the same number, and so does the "Compare with" menu.'
+          : !groups && 'Specialty hospitals (orthopedic, surgical) report fewer groups and often top the full list.'}
       </p>
 
       {error && <p className="text-red-500 text-sm">Couldn't load the leaderboard.</p>}

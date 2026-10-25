@@ -9,6 +9,7 @@ import PredictorsView from './views/PredictorsView'
 import MoversView from './views/MoversView'
 import FrameworkView from './views/FrameworkView'
 import EquityView from './views/EquityView'
+import ProfilesView from './views/ProfilesView'
 import HospitalSearchView from './views/HospitalSearchView'
 import HospitalDetailView from './views/HospitalDetailView'
 import { SECTIONS } from './components/SiteGuide'
@@ -17,7 +18,8 @@ const asCategory = (value: string | undefined): Category =>
   CATEGORIES.some(c => c.id === value) ? (value as Category) : 'wait_times'
 
 export default function App() {
-  const [section = 'rankings', arg] = useHashRoute()
+  const route = useHashRoute()
+  const [section = 'rankings', arg] = route
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -52,10 +54,11 @@ export default function App() {
       {section === 'finances' && <FinancesView />}
       {section === 'framework' && <FrameworkView />}
       {section === 'equity' && <EquityView />}
+      {section === 'profiles' && <ProfilesView path={route.slice(1)} />}
       {section === 'predictors' && <PredictorsView />}
       {section === 'movers' && <MoversView category={asCategory(arg)} />}
       {section === 'hospitals' && (arg ? <HospitalDetailView id={arg} /> : <HospitalSearchView />)}
-      {!['states', 'performance', 'finances', 'equity', 'framework', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
+      {!['states', 'performance', 'finances', 'equity', 'profiles', 'framework', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
     </div>
   )
 }
