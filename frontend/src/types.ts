@@ -236,6 +236,7 @@ export interface LeaderboardRow {
   state: string
   hospitalType: string | null
   measures: number
+  groups: number
   score: number
   scoreSe: number
   verdict: Verdict
@@ -244,7 +245,13 @@ export interface LeaderboardRow {
   overallRating: number | null
 }
 
+// Overall score, the two Donabedian domains, and the five CMS measure groups.
+export type Scope = 'overall' | 'outcome' | 'process' | 'mortality' | 'safety' | 'readmission' | 'experience' | 'timely_effective'
+export type QualityGroup = 'mortality' | 'safety' | 'readmission' | 'experience' | 'timely_effective'
+
 export interface Leaderboard {
+  scope: Scope
+  groups: number | null
   hospitals: number
   better: number
   worse: number
@@ -275,8 +282,33 @@ export interface MeasurePerformance {
   under: MeasurePerformanceRow[]
 }
 
+export interface ScopeScore {
+  measures: number
+  groups: number
+  score: number
+  scoreSe: number
+  verdict: Verdict
+  nationalRank: number
+  nationalCount: number
+}
+
+// Every quality measure the expected model scored for one hospital.
+export interface HospitalQualityMeasure {
+  measureId: string
+  name: string
+  category: Category | null
+  group: QualityGroup
+  domain: 'process' | 'outcome'
+  unit: string
+  higherIsBetter: boolean
+  actual: number
+  expected: number
+  gapSd: number // adjusted difference in units of the measure's real spread; positive = better
+  verdict: Verdict
+}
+
 export interface HospitalPerformance {
-  measures: { category: Category; expected: number; adjustedGap: number; gapSe: number; verdict: Verdict }[]
+  measures: { category: Category | null; expected: number; adjustedGap: number; gapSe: number; verdict: Verdict }[]
   overall: {
     measures: number
     score: number
@@ -287,6 +319,85 @@ export interface HospitalPerformance {
     nationalCount: number
     stateCount: number
   } | null
+  scopes: Partial<Record<Scope, ScopeScore>>
+  allMeasures: HospitalQualityMeasure[]
+  // Rank on the unadjusted overall score among hospitals in the same fifth of dual-eligible share.
+  peer: { fifth: number; peerRank: number; peerCount: number; dualLow: number; dualHigh: number } | null
+}
+
+export interface ChainTest {
+  link: 'structure_process' | 'structure_outcome' | 'process_outcome' | 'pair'
+  x: string
+  y: string
+  n: number
+  r: number | null
+  rCiLow: number | null
+  rCiHigh: number | null
+  spearman: number | null
+  partialR: number | null
+  qValue: number | null
+  topFifth: number | null
+  bottomFifth: number | null
+}
+
+export interface ChainOverview {
+  runCreatedAt: string
+  tests: ChainTest[]
+}
+
+export type MoneyMetric = 'patient_margin' | 'total_margin' | 'uncompensated' | 'other_income' | 'cost_per_discharge'
+  | 'fte_per_bed' | 'salary_per_fte' | 'contract_labor'
+
+export interface EquityFifth {
+  fifth: number
+  dualLow: number
+  dualHigh: number
+  hospitals: number
+  scores: Record<Scope, { raw: number | null; adjusted: number | null; n: number }>
+  money: Record<MoneyMetric, { median: number | null; n: number }>
+  within: Record<MoneyMetric, { spearman: number | null; n: number }>
+  medianMspb: number | null
+}
+
+export interface EquityOverview {
+  fifths: EquityFifth[]
+}
+
+export interface ValueHospital {
+  id: string
+  name: string
+  city: string | null
+  state: string
+  mspb: number
+  outcome: number
+  verdict: Verdict
+}
+
+export interface ValueFifth {
+  fifth: number
+  hospitals: number
+  lo: number
+  hi: number
+  avgOutcome: number
+  se: number
+}
+
+export interface ValueOverview {
+  windowStart: string
+  windowEnd: string
+  hospitals: number
+  medianMspb: number
+  p10Mspb: number
+  p90Mspb: number
+  medianCostAdj: number | null
+  spearmanMspbOutcome: number | null
+  spearmanCostOutcome: number | null
+  spearmanMspbCost: number | null
+  quadrants: { betterCheaper: number; betterCostlier: number; worseCheaper: number; worseCostlier: number }
+  mspbFifths: ValueFifth[]
+  costFifths: ValueFifth[]
+  highValue: ValueHospital[]
+  lowValue: ValueHospital[]
 }
 
 export interface SpotlightHospital extends LeaderboardRow {

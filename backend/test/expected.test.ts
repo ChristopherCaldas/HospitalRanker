@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COMPOSITE_CAP, activeColumns, composite, contextScales, features, fitMeasure, verdictOf, type HospitalInput, type HospitalResult } from '../src/analysis/expected'
+import { activeColumns, contextScales, features, fitMeasure, methodOf, verdictOf, type HospitalInput } from '../src/analysis/expected'
 
 function rng(seed: number) {
   return () => {
@@ -86,46 +86,6 @@ describe('fitMeasure', () => {
   })
 })
 
-describe('composite', () => {
-  const result = (facilityId: string, adjustedGap: number, gapSe: number): HospitalResult => ({
-    facilityId, state: 'AL', actual: 0, expected: 0, gap: adjustedGap, adjustedGap, gapSe, z: 0, verdict: 'as_expected',
-  })
-  // 200 ordinary hospitals across 3 measures, plus a consistently strong,
-  // precisely measured one and an equally high but very noisy one.
-  const r = rng(5)
-  const measures = [0, 1, 2].map(() => {
-    const rows = Array.from({ length: 200 }, (_, i) => result(`H${i}`, (r() - 0.5) * 4, 0.3))
-    rows.push(result('STEADY', 3, 0.3), result('NOISY', 3, 4))
-    return { tau: 1, results: rows }
-  })
-  const ranked = composite(measures)
-  const rank = (id: string) => ranked.find(c => c.facilityId === id)!
-
-  it('ranks precise evidence above equally high but noisy evidence', () => {
-    expect(rank('STEADY').nationalRank).toBe(1)
-    expect(rank('NOISY').nationalRank).toBeGreaterThan(rank('STEADY').nationalRank)
-    expect(rank('STEADY').verdict).toBe('better')
-    expect(rank('NOISY').verdict).toBe('as_expected')
-  })
-
-  it('needs at least three measures', () => {
-    const two = composite(measures.slice(0, 2))
-    expect(two).toHaveLength(0)
-  })
-
-  it('caps any one measure so a single extreme score cannot decide the composite', () => {
-    const ms = measures.map((m, k) => ({
-      ...m,
-      results: [...m.results, result('SPIKE', k === 0 ? -20 : 0.5, 0.3), result('STEADY_BAD', -2.5, 0.3)],
-    }))
-    const out = composite(ms)
-    const spike = out.find(c => c.facilityId === 'SPIKE')!
-    // Uncapped, SPIKE averages (-20 + 0.5 + 0.5) / 3 = -6.3; capped, (-3 + 1) / 3.
-    expect(COMPOSITE_CAP).toBe(3)
-    expect(spike.nationalRank).toBeLessThan(out.find(c => c.facilityId === 'STEADY_BAD')!.nationalRank)
-  })
-})
-
 describe('hospital-level context', () => {
   const r = rng(23)
   const normal = () => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r())
@@ -165,5 +125,13 @@ describe('hospital-level context', () => {
     expect(fitted.summary.coefficients.case_mix_per_0_25).toBeUndefined()
     expect(fitted.summary.importance.complexity).toBeUndefined()
     expect(activeColumns('OP_18b').length).toBeGreaterThan(activeColumns('MORT_30_AMI').length)
+    // Infection ratios' predicted counts already reflect teaching and size.
+    expect(activeColumns('HAI_6_SIR')).toEqual(activeColumns('MORT_30_AMI'))
+    expect(activeColumns('SEP_1')).toEqual(activeColumns('OP_18b'))
+  })
+
+  it('treats CMS model-based rates as already shrunk and everything else as raw', () => {
+    for (const id of ['MORT_30_PN', 'READM_30_COPD', 'COMP_HIP_KNEE', 'PSI_90']) expect(methodOf(id)).toBe('cms_smoothed')
+    for (const id of ['OP_18b', 'SEP_1', 'HAI_1_SIR', 'H_RECMND_STAR_RATING']) expect(methodOf(id)).toBe('shrunk')
   })
 })

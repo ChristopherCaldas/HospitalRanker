@@ -16,7 +16,8 @@ export async function insertScores(db: Client, releaseId: number, csvRows: CsvRo
     ]
   )
   await db.query('DELETE FROM measure_scores WHERE release_id = $1', [releaseId])
-  const col = <K extends keyof ScoreRow>(key: K) => scores.map(s => s[key])
+  const kept = newestPerMeasure(scores)
+  const col = <K extends keyof ScoreRow>(key: K) => kept.map(s => s[key])
   await db.query(
     `INSERT INTO measure_scores (release_id, facility_id, measure_id, score, lower_estimate, higher_estimate,
                                  denominator, compared_to_national, footnote, start_date, end_date)
@@ -28,4 +29,16 @@ export async function insertScores(db: Client, releaseId: number, csvRows: CsvRo
       col('start_date'), col('end_date'),
     ]
   )
+}
+
+// Some files list a measure twice for a hospital (the 2021 snapshot has two
+// flu seasons of IMM_3); keep the row with the latest period end.
+export function newestPerMeasure(scores: ScoreRow[]): ScoreRow[] {
+  const best = new Map<string, ScoreRow>()
+  for (const s of scores) {
+    const key = `${s.facility_id} ${s.measure_id}`
+    const prior = best.get(key)
+    if (!prior || (s.end_date ?? '') > (prior.end_date ?? '')) best.set(key, s)
+  }
+  return [...best.values()]
 }

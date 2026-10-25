@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MEASURE_DATASETS } from '../src/ingest/datasets'
+import { MEASURE_DATASETS, rowMeasure, toScores } from '../src/ingest/datasets'
 
 // Rows shaped like the real CMS CSV headers and values.
 const base = { 'Facility ID': ' 010001 ', 'Facility Name': 'SOUTHEAST HEALTH MEDICAL CENTER', 'Start Date': '07/01/2022', 'End Date': '06/30/2025' }
@@ -38,5 +38,20 @@ describe('CMS CSV mappings', () => {
     }
     expect(MEASURE_DATASETS['dgck-syfz'].measureIdColumn).toBe('HCAHPS Measure ID')
     expect(MEASURE_DATASETS['dgck-syfz'].toScore(row)).toMatchObject({ measure_id: 'H_COMP_1_STAR_RATING', score: 3, denominator: 1392 })
+  })
+
+  it('folds each infection SIR, interval and predicted cases into one score', () => {
+    const spec = MEASURE_DATASETS['77hc-ibv8']
+    const hai = (id: string, Score: string) => ({ ...base, 'Measure ID': id, Score, 'Compared to National': 'No Different than National Benchmark', Footnote: '' })
+    const rows = [
+      hai('HAI_1_SIR', '0.891'), hai('HAI_1_CILOWER', '0.658'), hai('HAI_1_CIUPPER', '1.182'),
+      hai('HAI_1_ELIGCASES', '50.495'), hai('HAI_1_NUMERATOR', '45'), hai('HAI_1_DOPC', '46924'),
+      hai('HAI_2_SIR', 'Not Available'), hai('HAI_2_ELIGCASES', '0.412'),
+    ]
+    expect(rows.map(r => rowMeasure(spec, r))).toEqual(['HAI_1_SIR', 'HAI_1_SIR', 'HAI_1_SIR', 'HAI_1_SIR', 'HAI_1_SIR', 'HAI_1_SIR', 'HAI_2_SIR', 'HAI_2_SIR'])
+    expect(toScores(spec, rows)).toEqual([
+      expect.objectContaining({ facility_id: '010001', measure_id: 'HAI_1_SIR', score: 0.891, lower_estimate: 0.658, higher_estimate: 1.182, denominator: 50 }),
+      expect.objectContaining({ measure_id: 'HAI_2_SIR', score: null, lower_estimate: null, higher_estimate: null, denominator: 0 }),
+    ])
   })
 })

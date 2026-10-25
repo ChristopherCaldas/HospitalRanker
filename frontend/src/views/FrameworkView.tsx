@@ -1,4 +1,5 @@
 import { href } from '../lib/router'
+import ChainSection from '../components/ChainSection'
 
 // Static background page: Donabedian's quality framework and where this site's measures sit in it.
 
@@ -23,8 +24,10 @@ const TRIAD = [
     examples: ['Ordering the right tests', 'Following treatment protocols', 'Communicating with patients'],
     here: (
       <>
-        <strong>ER wait times</strong> (how long patients spend in the emergency room) and <strong>satisfaction</strong>{' '}
-        (patients' ratings of how well nurses communicated, which Donabedian counted as the interpersonal side of care).
+        Timely and effective care (ER waits, patients leaving before being seen, sepsis care, fast head CTs for
+        stroke, staff flu shots) and patients' reports of how well nurses and doctors communicated, explained
+        medicines and discharge plans, and kept rooms clean and quiet: what Donabedian called the interpersonal side
+        of care.
       </>
     ),
   },
@@ -35,8 +38,8 @@ const TRIAD = [
     examples: ['Survival and recovery', 'Patient experience', 'Return trips to the hospital'],
     here: (
       <>
-        <strong>Mortality</strong> (deaths within 30 days of a heart attack), <strong>patient safety</strong> (preventable
-        complications) and <strong>readmissions</strong> (heart-failure patients back within 30 days).
+        Deaths within 30 days for six conditions, preventable complications and six hospital-acquired infections,
+        readmissions for six conditions, and patients' overall rating of the hospital and whether they'd recommend it.
       </>
     ),
   },
@@ -80,7 +83,7 @@ const RATERS = [
     purpose: 'Showing how hospitals compare on five measures, and which beat what their circumstances predict',
     data: 'Medicare (CMS) public measures and cost reports, CDC, Census and county data',
     reputation: 'No',
-    output: 'Best and worst five per measure, expected vs. actual scores with "clear cases only" verdicts',
+    output: "Best and worst five per measure; expected vs. actual on 33 measures, combined into outcome, process and overall scores with the CMS star rating's group weights and \"clear cases only\" verdicts",
   },
 ]
 
@@ -139,12 +142,16 @@ export default function FrameworkView() {
         </p>
       </section>
 
+      <ChainSection />
+
       <section className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-gray-800">The seven pillars of quality</h3>
           <p className="text-sm text-gray-600 mt-1 max-w-3xl">
             Later, in 1990, Donabedian listed seven things that together make up quality. No single score covers them
-            all; most report cards, this one included, mainly measure effectiveness.
+            all. Most report cards mainly measure effectiveness; this site also looks at efficiency (what care costs, on
+            the <a href={href('finances')} className="text-blue-700 hover:underline">Finances</a> page) and equity (how
+            hospitals serving poorer patients fare, on the <a href={href('equity')} className="text-blue-700 hover:underline">Equity</a> page).
           </p>
         </div>
         <dl className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">

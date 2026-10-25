@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crossValidatedR2, lasso, lassoCv, lassoLambdaMax, noiseModel, predict, shrink, solve, weightedR2, wls } from '../src/analysis/stats'
+import { benjaminiHochberg, correlationTest, crossValidatedR2, erfc, lasso, lassoCv, lassoLambdaMax, noiseModel, partialCorrelation, predict, shrink, solve, weightedR2, wls } from '../src/analysis/stats'
 
 // Deterministic pseudo-random numbers so the tests are reproducible.
 function rng(seed: number) {
@@ -141,5 +141,37 @@ describe('lasso', () => {
     const chosen = cv.path[cv.oneSe]
     expect(Math.abs(chosen[0])).toBeGreaterThan(1)
     expect(Math.abs(chosen[1])).toBeGreaterThan(0.5)
+  })
+})
+
+describe('significance helpers', () => {
+  it('erfc matches known values', () => {
+    expect(erfc(0)).toBeCloseTo(1, 6)
+    expect(erfc(1)).toBeCloseTo(0.157299, 6)
+    expect(erfc(-1)).toBeCloseTo(1.842701, 6)
+  })
+
+  it('tests a correlation with Fisher z (matches the SQL formula)', () => {
+    const t = correlationTest(0.3, 50)!
+    expect(t.low).toBeCloseTo(Math.tanh(Math.atanh(0.3) - 1.96 / Math.sqrt(47)), 10)
+    expect(t.p).toBeCloseTo(0.0337, 3)
+    expect(correlationTest(0.3, 3)).toBeNull()
+  })
+
+  it('adjusts p-values with Benjamini-Hochberg', () => {
+    // R: p.adjust(c(0.01, 0.04, 0.03, 0.5), 'BH') = 0.04 0.0533 0.0533 0.5
+    const q = benjaminiHochberg([0.01, 0.04, 0.03, 0.5])
+    expect(q[0]).toBeCloseTo(0.04, 6)
+    expect(q[1]).toBeCloseTo(0.0533333, 6)
+    expect(q[2]).toBeCloseTo(0.0533333, 6)
+    expect(q[3]).toBeCloseTo(0.5, 6)
+  })
+
+  it('partials out a shared driver', () => {
+    const r = rng(9)
+    const c = Array.from({ length: 2000 }, () => normal(r))
+    const a = c.map(v => v + normal(r))
+    const b = c.map(v => v + normal(r))
+    expect(partialCorrelation(a, b, c)).toBeCloseTo(0, 1)
   })
 })

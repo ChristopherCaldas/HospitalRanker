@@ -3,12 +3,16 @@ import { requireEnv } from '../db/env'
 import { writeExpectedPerformance } from './expected'
 import { writePredictors } from './predictors'
 import { writeMovers } from './movers'
+import { writeChain } from './chain'
+import { writeEquity } from './equity'
 
 // Part of the input fingerprint: bump when the analysis method changes so the
 // next run re-computes even if no data changed.
-const METHOD_VERSION = 'expected-v2'
+const METHOD_VERSION = 'expected-v3'
 const PREDICTORS_VERSION = 'predictors-v1'
 const MOVERS_VERSION = 'movers-v1'
+const CHAIN_VERSION = 'chain-v1'
+const EQUITY_VERSION = 'equity-v1'
 
 // Freezes the *_live analysis views into a new analysis run when the inputs
 // (CMS release per measure, CDC and Medicare GV versions) differ from the
@@ -39,8 +43,10 @@ async function main() {
         'method', $1::text,
         'changes', (SELECT version FROM source_loads WHERE source = 'hospital_changes' ORDER BY loaded_at DESC LIMIT 1),
         'predictors', $2::text,
-        'movers', $3::text
-      ) AS inputs`, [METHOD_VERSION, PREDICTORS_VERSION, MOVERS_VERSION])
+        'movers', $3::text,
+        'chain', $4::text,
+        'equity', $5::text
+      ) AS inputs`, [METHOD_VERSION, PREDICTORS_VERSION, MOVERS_VERSION, CHAIN_VERSION, EQUITY_VERSION])
     const { rows: [latest] } = await db.query('SELECT id, inputs FROM analysis_runs ORDER BY id DESC LIMIT 1')
 
     // jsonb equality ignores key order.
@@ -60,6 +66,8 @@ async function main() {
       console.log(`  ${table}: ${rowCount} rows`)
     }
     await writeExpectedPerformance(db, run.id)
+    await writeChain(db, run.id)
+    await writeEquity(db, run.id)
     await writePredictors(db, run.id)
     await writeMovers(db, run.id)
     await db.query('COMMIT')

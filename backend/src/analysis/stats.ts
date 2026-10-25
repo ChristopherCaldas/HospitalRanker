@@ -238,3 +238,43 @@ export function lassoCv(X: number[][], y: number[], w: number[], { folds = 5, st
   }
   return { lambdas, cvR2, cvSe, best, oneSe, path }
 }
+
+// Complementary error function (Abramowitz & Stegun 7.1.26, |error| < 1.5e-7).
+export function erfc(x: number): number {
+  const z = Math.abs(x)
+  const t = 1 / (1 + 0.3275911 * z)
+  const poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))))
+  const r = poly * Math.exp(-z * z)
+  return x >= 0 ? r : 2 - r
+}
+
+// Fisher-z 95% interval and two-sided p for a correlation over n pairs, with
+// `controls` variables partialled out (as in the SQL state correlations).
+export function correlationTest(r: number, n: number, controls = 0): { low: number; high: number; p: number } | null {
+  const df = n - 3 - controls
+  if (!(df > 0) || !(Math.abs(r) < 1)) return null
+  const z = Math.atanh(r)
+  const se = 1 / Math.sqrt(df)
+  return { low: Math.tanh(z - 1.96 * se), high: Math.tanh(z + 1.96 * se), p: erfc(Math.abs(z) / se / Math.SQRT2) }
+}
+
+// Benjamini-Hochberg FDR-adjusted q-values, in the input order.
+export function benjaminiHochberg(p: number[]): number[] {
+  const order = p.map((v, i) => [v, i] as const).sort((a, b) => a[0] - b[0])
+  const q = new Array<number>(p.length)
+  let running = 1
+  for (let k = order.length - 1; k >= 0; k--) {
+    const [v, i] = order[k]
+    running = Math.min(running, (v * order.length) / (k + 1))
+    q[i] = running
+  }
+  return q
+}
+
+// Correlation of a and b with c partialled out.
+export function partialCorrelation(a: number[], b: number[], c: number[]): number {
+  const ab = pearson(a, b)
+  const ac = pearson(a, c)
+  const bc = pearson(b, c)
+  return (ab - ac * bc) / Math.sqrt((1 - ac ** 2) * (1 - bc ** 2))
+}

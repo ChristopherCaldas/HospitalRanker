@@ -45,6 +45,7 @@ export interface LeaderboardRow {
   state: string
   hospitalType: string | null
   measures: number
+  groups: number
   score: number
   scoreSe: number
   verdict: 'better' | 'as_expected' | 'worse'
@@ -54,6 +55,8 @@ export interface LeaderboardRow {
 }
 
 export interface Leaderboard {
+  scope: string
+  groups: number | null
   hospitals: number
   better: number
   worse: number
@@ -62,33 +65,45 @@ export interface Leaderboard {
 }
 
 const LEADERBOARD_COLUMNS = `
-  h.facility_id AS id, h.name, h.city, c.state, h.hospital_type AS "hospitalType", c.measures,
+  h.facility_id AS id, h.name, h.city, c.state, h.hospital_type AS "hospitalType", c.measures, c.groups,
   c.score, c.score_se AS "scoreSe", c.verdict, c.national_rank AS "nationalRank", c.state_rank AS "stateRank",
   h.overall_rating AS "overallRating"`
 
-// Overall context-adjusted ranking, nationally or within one state.
-export async function getLeaderboard(state: string | null, limit: number): Promise<Leaderboard> {
+// Scopes of analysis_hospital_scores: overall, the two domains, the five groups.
+export const SCOPES = ['overall', 'outcome', 'process', 'mortality', 'safety', 'readmission', 'experience', 'timely_effective'] as const
+export type Scope = (typeof SCOPES)[number]
+
+// Context-adjusted ranking on one scope, nationally or within one state.
+// `groups` restricts to hospitals with that many measure groups, the way CMS
+// sets star-rating peer groups: a specialty hospital with three groups is
+// compared with others that have three, not with full-service hospitals.
+export async function getLeaderboard(state: string | null, limit: number, scope: Scope = 'overall', groups: number | null = null): Promise<Leaderboard> {
   const n = Math.min(Math.max(limit, 1), 50)
-  const where = 'WHERE ($1::text IS NULL OR c.state = $1)'
+  // Within a peer group, national rank is the position among that group.
+  const scored = `(
+    SELECT s.*, CASE WHEN $3::int IS NULL THEN s.national_rank
+                     ELSE row_number() OVER (ORDER BY s.score DESC, s.facility_id)::int END AS list_rank
+    FROM analysis_latest_hospital_scores s WHERE s.scope = $1 AND ($3::int IS NULL OR s.groups = $3)) c`
+  const where = 'WHERE ($2::text IS NULL OR c.state = $2)'
+  const columns = LEADERBOARD_COLUMNS.replace('c.national_rank AS "nationalRank"', 'c.list_rank AS "nationalRank"')
+  const params = [scope, state, groups]
   const [counts, top, bottom] = await Promise.all([
     pool.query<{ hospitals: number; better: number; worse: number }>(
       `SELECT count(*)::int AS hospitals, count(*) FILTER (WHERE verdict = 'better')::int AS better,
               count(*) FILTER (WHERE verdict = 'worse')::int AS worse
-       FROM analysis_latest_hospital_composite c ${where}`,
-      [state]
+       FROM ${scored} ${where}`,
+      params
     ),
     pool.query<LeaderboardRow>(
-      `SELECT ${LEADERBOARD_COLUMNS} FROM analysis_latest_hospital_composite c
-       JOIN hospitals h USING (facility_id) ${where} ORDER BY c.score DESC, h.name LIMIT $2`,
-      [state, n]
+      `SELECT ${columns} FROM ${scored} JOIN hospitals h USING (facility_id) ${where} ORDER BY c.score DESC, h.name LIMIT $4`,
+      [...params, n]
     ),
     pool.query<LeaderboardRow>(
-      `SELECT ${LEADERBOARD_COLUMNS} FROM analysis_latest_hospital_composite c
-       JOIN hospitals h USING (facility_id) ${where} ORDER BY c.score ASC, h.name LIMIT $2`,
-      [state, n]
+      `SELECT ${columns} FROM ${scored} JOIN hospitals h USING (facility_id) ${where} ORDER BY c.score ASC, h.name LIMIT $4`,
+      [...params, n]
     ),
   ])
-  return { ...counts.rows[0], top: top.rows, bottom: bottom.rows }
+  return { scope, groups, ...counts.rows[0], top: top.rows, bottom: bottom.rows }
 }
 
 export interface MeasurePerformanceRow {
@@ -132,9 +147,10 @@ export async function getMeasurePerformance(category: string, state: string | nu
   }
 }
 
-// Per-hospital expected-vs-actual rows and composite, for the hospital page.
+// Per-hospital expected-vs-actual rows and composite, for the hospital page,
+// plus every quality measure, the group/domain scores and the peer-group rank.
 export async function getHospitalPerformance(id: string) {
-  const [measures, overall] = await Promise.all([
+  const [measures, overall, scopes, allMeasures, peer] = await Promise.all([
     pool.query(
       `SELECT m.category, e.expected, e.adjusted_gap AS "adjustedGap", e.gap_se AS "gapSe", e.verdict
        FROM analysis_latest_hospital_expected e JOIN measures m USING (measure_id) WHERE e.facility_id = $1`,
@@ -148,8 +164,39 @@ export async function getHospitalPerformance(id: string) {
        FROM analysis_latest_hospital_composite c WHERE c.facility_id = $1`,
       [id]
     ),
+    pool.query(
+      `SELECT scope, measures, groups, score, score_se AS "scoreSe", verdict, national_rank AS "nationalRank",
+              "nationalCount"
+       FROM (SELECT *, count(*) OVER (PARTITION BY scope)::int AS "nationalCount" FROM analysis_latest_hospital_scores) s
+       WHERE facility_id = $1`,
+      [id]
+    ),
+    pool.query(
+      `SELECT e.measure_id AS "measureId", m.name, m.category, m.quality_group AS "group", m.domain, m.unit,
+              m.higher_is_better AS "higherIsBetter", e.actual, e.expected, e.adjusted_gap / x.tau AS "gapSd", e.verdict
+       FROM analysis_latest_hospital_expected e
+       JOIN measures m USING (measure_id)
+       JOIN analysis_latest_expected_models x USING (measure_id)
+       WHERE e.facility_id = $1 AND x.tau > 0
+       ORDER BY m.quality_group, e.measure_id`,
+      [id]
+    ),
+    pool.query(
+      `SELECT p.fifth, p.peer_rank AS "peerRank", p.peer_count AS "peerCount",
+              f.dual_low AS "dualLow", f.dual_high AS "dualHigh"
+       FROM analysis_latest_hospital_peer p
+       JOIN analysis_latest_equity_fifths f USING (fifth)
+       WHERE p.facility_id = $1`,
+      [id]
+    ),
   ])
-  return { measures: measures.rows, overall: overall.rows[0] ?? null }
+  return {
+    measures: measures.rows,
+    overall: overall.rows[0] ?? null,
+    scopes: Object.fromEntries(scopes.rows.map(({ scope, ...r }) => [scope, r])),
+    allMeasures: allMeasures.rows,
+    peer: peer.rows[0] ?? null,
+  }
 }
 
 // The national top and bottom few, each with what drives its score (every
