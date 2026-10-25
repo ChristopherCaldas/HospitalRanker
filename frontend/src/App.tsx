@@ -7,6 +7,7 @@ import PerformanceView from './views/PerformanceView'
 import FinancesView from './views/FinancesView'
 import PredictorsView from './views/PredictorsView'
 import MoversView from './views/MoversView'
+import FrameworkView from './views/FrameworkView'
 import HospitalSearchView from './views/HospitalSearchView'
 import HospitalDetailView from './views/HospitalDetailView'
 import { SECTIONS } from './components/SiteGuide'
@@ -48,10 +49,11 @@ export default function App() {
       {section === 'states' && <StatesView category={asCategory(arg)} />}
       {section === 'performance' && <PerformanceView category={asCategory(arg)} />}
       {section === 'finances' && <FinancesView />}
+      {section === 'framework' && <FrameworkView />}
       {section === 'predictors' && <PredictorsView />}
       {section === 'movers' && <MoversView category={asCategory(arg)} />}
       {section === 'hospitals' && (arg ? <HospitalDetailView id={arg} /> : <HospitalSearchView />)}
-      {!['states', 'performance', 'finances', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
+      {!['states', 'performance', 'finances', 'framework', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
     </div>
   )
 }
