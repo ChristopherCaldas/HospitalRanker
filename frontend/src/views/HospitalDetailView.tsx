@@ -34,7 +34,10 @@ export default function HospitalDetailView({ id }: { id: string }) {
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-      <a href={href('hospitals')} className="text-sm text-blue-600 hover:underline">← Search hospitals</a>
+      <div className="flex flex-wrap justify-between gap-2 text-sm">
+        <a href={href('hospitals')} className="text-blue-600 hover:underline">← Search hospitals</a>
+        <a href={href('profiles', hospital.id)} className="text-blue-600 hover:underline">In-depth profile →</a>
+      </div>
 
       <div>
         <h2 className="text-2xl font-semibold text-gray-900">{hospital.name}</h2>
@@ -264,15 +267,15 @@ function PercentileBar({ label, value, of }: { label: string; value: number | nu
 }
 
 // What the expected scores adjust for, at the hospital level.
-function ContextCard({ context, hospitalType }: { context: HospitalContext | null; hospitalType: string | null }) {
+export function ContextCard({ context, hospitalType }: { context: HospitalContext | null; hospitalType: string | null }) {
   const fields = Object.keys(CONTEXT_LABELS) as ContextField[]
   const shown = context ? fields.filter(f => context.values[f] !== null) : []
   return (
     <section className="bg-white border border-gray-200 rounded-lg p-4">
       <h3 className="font-semibold text-gray-800">What its expected scores account for</h3>
       <p className="text-xs text-gray-500 mt-1">
-        Besides its type ({hospitalType ?? 'unknown'}) and ownership: its patients, its county and, for ER times and
-        patient ratings, how complex its care is.
+        Besides its type ({hospitalType ?? 'unknown'}) and ownership: its patients, its county and, for measures that
+        aren't already risk-adjusted (ER times, process measures, patient ratings), how complex its care is.
       </p>
       {shown.length === 0 ? (
         <p className="text-sm text-gray-500 mt-3">No hospital-level context on file; only type, ownership and state are used.</p>
@@ -313,7 +316,7 @@ function ContextCard({ context, hospitalType }: { context: HospitalContext | nul
 }
 
 // Cost-report finances: shown for context, not used in expected scores.
-function FinanceCard({ finance, hospitalType }: { finance: HospitalFinance | null; hospitalType: string | null }) {
+export function FinanceCard({ finance, hospitalType }: { finance: HospitalFinance | null; hospitalType: string | null }) {
   const metrics = Object.keys(FINANCE_LABELS) as FinanceMetric[]
   return (
     <section className="bg-white border border-gray-200 rounded-lg p-4">

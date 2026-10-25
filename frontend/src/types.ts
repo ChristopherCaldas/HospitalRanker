@@ -513,3 +513,16 @@ export interface MeasureMovers {
   ownership: { hospitals: number; effect: number; se: number; improved: number; declined: number }
   movers: Mover[]
 }
+
+// Extras for the in-depth hospital profile (GET /api/hospitals/:id/profile).
+export interface ProfileExtras {
+  system: { name: string; hospitals: { id: string; name: string; city: string | null; state: string }[] } | null
+  mspb: { value: number; nationalMedian: number; stateMedian: number | null; windowStart: string; windowEnd: string } | null
+  cost: {
+    costPerCase: number | null
+    salaryPerFte: number | null
+    nationalCostPerCase: number | null
+    nationalSalaryPerFte: number | null
+  }
+  stateRanks: Partial<Record<Scope, { stateRank: number; stateCount: number }>>
+}

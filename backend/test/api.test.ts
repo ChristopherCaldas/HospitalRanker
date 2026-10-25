@@ -16,6 +16,7 @@ vi.mock('../src/services/performance', () => ({
   getMeasurePerformance: vi.fn(), getSpotlight: vi.fn(), getBenchmarks: vi.fn(),
   SCOPES: ['overall', 'outcome', 'process', 'mortality', 'safety', 'readmission', 'experience', 'timely_effective'],
 }))
+vi.mock('../src/services/profile', () => ({ getProfileExtras: vi.fn() }))
 vi.mock('../src/services/quality', () => ({ getChain: vi.fn(), getEquity: vi.fn(), getValue: vi.fn() }))
 
 const { app } = await import('../src/app')
@@ -29,6 +30,7 @@ const { getPredictors } = await import('../src/services/predictors')
 const { getMovers, getHospitalMovers } = await import('../src/services/movers')
 const { getHospitalPerformance, getLeaderboard } = await import('../src/services/performance')
 const { getChain, getEquity, getValue } = await import('../src/services/quality')
+const { getProfileExtras } = await import('../src/services/profile')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -170,5 +172,14 @@ describe('GET /api/quality/*', () => {
     expect((await request(app).get('/api/quality/chain')).body).toEqual({ runCreatedAt: 'x', tests: [] })
     expect((await request(app).get('/api/quality/equity')).status).toBe(404)
     expect((await request(app).get('/api/quality/value')).status).toBe(500)
+  })
+})
+
+describe('GET /api/hospitals/:id/profile', () => {
+  it('returns the extras, or 404 for an unknown hospital', async () => {
+    vi.mocked(getProfileExtras).mockResolvedValueOnce({ system: null, mspb: null, cost: {}, stateRanks: {} } as never)
+    expect((await request(app).get('/api/hospitals/080001/profile')).body).toMatchObject({ system: null })
+    vi.mocked(getProfileExtras).mockResolvedValueOnce(null)
+    expect((await request(app).get('/api/hospitals/999999/profile')).status).toBe(404)
   })
 })

@@ -69,7 +69,7 @@ export function ScopeBreakdown({ scopes, peer }: Pick<HospitalPerformance, 'scop
       {peer && (
         <p className="text-sm text-gray-700">
           <strong>Among similar hospitals:</strong> {pctRange(peer.dualLow, peer.dualHigh)} of this hospital's Medicare
-          patients are low-income enough to also have Medicaid, like {peer.peerCount.toLocaleString('en-US')} other hospitals
+          patients are low-income enough to also have Medicaid, like {(peer.peerCount - 1).toLocaleString('en-US')} other hospitals
           in its <a href={href('equity')} className="text-blue-600 hover:underline">peer group</a>. On the unadjusted score it
           ranks <strong>#{peer.peerRank.toLocaleString('en-US')}</strong> of them.
         </p>

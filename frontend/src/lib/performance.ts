@@ -26,7 +26,7 @@ export const PREDICTOR_LABELS: Record<string, string> = {
 export const GROUP_LABELS: Record<string, { name: string; description: string }> = {
   peer_group: { name: 'Hospital type and ownership', description: 'critical access vs. acute care, VA, for-profit, government-run' },
   patients: { name: "The hospital's patients", description: 'its share of low-income patients (dual-eligible and disproportionate-share)' },
-  complexity: { name: 'How complex its care is', description: 'case mix and teaching intensity (ER times and patient ratings only)' },
+  complexity: { name: 'How complex its care is', description: 'case mix and teaching intensity (measures not already risk-adjusted)' },
   community: { name: 'Its community', description: "its county's social vulnerability, poverty and uninsured rates; rural or urban" },
   crowding: { name: 'How full hospitals were', description: "the state's bed occupancy over the period" },
   spending: { name: 'Medicare spending', description: 'price-adjusted spending per person in the state' },

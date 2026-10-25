@@ -6,6 +6,7 @@ import { getHistories } from '../services/history'
 import { getHospitalFinance } from '../services/finances'
 import { getHospitalMovers } from '../services/movers'
 import { HOSPITAL_NOTES, US_NEWS_HONOR_ROLL } from '../content/hospitalNotes'
+import { getProfileExtras } from '../services/profile'
 
 const router = Router()
 
@@ -18,6 +19,18 @@ router.get('/', async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to search hospitals' })
+  }
+})
+
+// GET /api/hospitals/:id/profile — extras for the in-depth profile.
+router.get('/:id/profile', async (req: Request, res: Response) => {
+  try {
+    const extras = await getProfileExtras(req.params.id)
+    if (!extras) res.status(404).json({ error: 'Unknown hospital' })
+    else res.json(extras)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to fetch profile' })
   }
 })
 

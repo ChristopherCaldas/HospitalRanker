@@ -3,6 +3,7 @@ import { href } from '../lib/router'
 export const SECTIONS = [
   { id: 'rankings', label: 'Rankings', blurb: 'The five best and five worst hospitals in the country on one topic. Pick the topic with the tabs below the header.' },
   { id: 'hospitals', label: 'Hospitals', blurb: 'Look up any hospital by name or city to see its full report card.' },
+  { id: 'profiles', label: 'Profiles', blurb: 'An in-depth report on one hospital: structure, process, outcomes, cost and trends, with featured hospitals and health systems.' },
   { id: 'performance', label: 'Expected vs. actual', blurb: "Which hospitals do better or worse than you'd expect, given the patients and community they serve." },
   { id: 'predictors', label: 'What predicts results', blurb: 'Which facts about a hospital (money, staff, location, past results) go along with good scores.' },
   { id: 'movers', label: 'Movers', blurb: 'Hospitals that clearly got better or worse over the last few years.' },
