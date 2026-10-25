@@ -74,16 +74,20 @@ export const SCOPES = ['overall', 'outcome', 'process', 'mortality', 'safety', '
 export type Scope = (typeof SCOPES)[number]
 
 // Context-adjusted ranking on one scope, nationally or within one state.
-// `groups` restricts to hospitals with that many measure groups, the way CMS
-// sets star-rating peer groups: a specialty hospital with three groups is
-// compared with others that have three, not with full-service hospitals.
+// `groups` restricts to hospitals with that many measure groups on their
+// overall score, the way CMS sets star-rating peer groups: a specialty hospital
+// with three groups is compared with others that have three, not with
+// full-service hospitals. Peer groups come from the overall score on every
+// scope, since a domain or group score covers fewer groups.
 export async function getLeaderboard(state: string | null, limit: number, scope: Scope = 'overall', groups: number | null = null): Promise<Leaderboard> {
   const n = Math.min(Math.max(limit, 1), 50)
   // Within a peer group, national rank is the position among that group.
   const scored = `(
     SELECT s.*, CASE WHEN $3::int IS NULL THEN s.national_rank
                      ELSE row_number() OVER (ORDER BY s.score DESC, s.facility_id)::int END AS list_rank
-    FROM analysis_latest_hospital_scores s WHERE s.scope = $1 AND ($3::int IS NULL OR s.groups = $3)) c`
+    FROM analysis_latest_hospital_scores s
+    WHERE s.scope = $1 AND ($3::int IS NULL OR s.facility_id IN (
+      SELECT facility_id FROM analysis_latest_hospital_scores WHERE scope = 'overall' AND groups = $3))) c`
   const where = 'WHERE ($2::text IS NULL OR c.state = $2)'
   const columns = LEADERBOARD_COLUMNS.replace('c.national_rank AS "nationalRank"', 'c.list_rank AS "nationalRank"')
   const params = [scope, state, groups]
