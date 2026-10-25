@@ -8,6 +8,7 @@ import { footnoteText } from '../lib/footnotes'
 import { MOVER_LABELS } from '../lib/movers'
 import { href } from '../lib/router'
 import TrendChart, { TrendLegend } from '../components/TrendChart'
+import { AllMeasures, ScopeBreakdown } from '../components/QualityBreakdown'
 
 const TONE = {
   better: 'bg-green-50 text-green-800 border-green-200',
@@ -78,6 +79,7 @@ export default function HospitalDetailView({ id }: { id: string }) {
               {VERDICT_LABELS[hospital.performance.overall.verdict].label}
             </span>
           </p>
+          <ScopeBreakdown scopes={hospital.performance.scopes ?? {}} peer={hospital.performance.peer ?? null} />
         </section>
       )}
 
@@ -127,6 +129,8 @@ export default function HospitalDetailView({ id }: { id: string }) {
           />
         ))}
       </div>
+
+      <AllMeasures measures={hospital.performance.allMeasures ?? []} />
 
       <p className="text-xs text-gray-400">
         "Better than X%" compares this hospital only with hospitals CMS scored on the same measure. Scores describe care

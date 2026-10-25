@@ -8,6 +8,7 @@ export const SECTIONS = [
   { id: 'movers', label: 'Movers', blurb: 'Hospitals that clearly got better or worse over the last few years.' },
   { id: 'states', label: 'States', blurb: 'How each state does, and whether crowded hospitals or Medicare spending make a difference.' },
   { id: 'finances', label: 'Finances', blurb: "Hospitals' money: who's losing money on patient care, and whether that goes along with quality." },
+  { id: 'equity', label: 'Equity', blurb: 'Whether hospitals serving poorer patients get worse results, and whether that comes down to the patients or to money.' },
   { id: 'framework', label: 'Quality framework', blurb: "The structure–process–outcome framework behind hospital report cards, and where this site's numbers fit." },
 ]
 

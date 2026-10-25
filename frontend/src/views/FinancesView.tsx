@@ -6,6 +6,7 @@ import { formatMonth } from '../lib/format'
 import { formatScore } from '../lib/performance'
 import { href } from '../lib/router'
 import HowToRead from '../components/HowToRead'
+import ValueSection from '../components/ValueSection'
 
 const SERIES = '#2a78d6'
 const SURFACE = '#ffffff'
@@ -166,6 +167,8 @@ export default function FinancesView() {
           </details>
         </div>
       </section>
+
+      <ValueSection />
 
       <HowToRead
         items={[

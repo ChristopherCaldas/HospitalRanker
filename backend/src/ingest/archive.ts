@@ -3,7 +3,7 @@ import { parse } from 'csv-parse'
 import { Client } from 'pg'
 import yauzl from 'yauzl'
 import { requireEnv } from '../db/env'
-import { CsvRow, MEASURE_DATASETS } from './datasets'
+import { CsvRow, MEASURE_DATASETS, rowMeasure, toScores } from './datasets'
 import { withRetry } from './retry'
 import { insertScores } from './store'
 
@@ -26,6 +26,8 @@ export const ARCHIVE_FILES: Record<string, RegExp> = {
   'ynj2-r877': /(^|\/)(Complications.and.Deaths.?-.?Hospital|ynj2-r877)\.csv$/i,
   '632h-zaca': /(^|\/)(Unplanned.Hospital.Visits.?-.?Hospital|632h-zaca)\.csv$/i,
   'dgck-syfz': /(^|\/)(HCAHPS.?-.?Hospital|dgck-syfz)\.csv$/i,
+  '77hc-ibv8': /(^|\/)(Healthcare.Associated.Infections.?-.?Hospital|77hc-ibv8)\.csv$/i,
+  'rrqw-56er': /(^|\/)(Medicare.Hospital.Spending.Per.Patient.?-.?Hospital|Medicare.Spending.Per.Beneficiary.?-.?Hospital|rrqw-56er)\.csv$/i,
 }
 
 // Measure IDs CMS has since renamed.
@@ -117,14 +119,20 @@ async function main() {
     const liveReleased = new Map(live.map(r => [r.dataset_id, r.released]))
     const { rows: known } = await db.query<{ facility_id: string }>('SELECT facility_id FROM hospitals')
     const hospitals = new Set(known.map(r => r.facility_id))
-    const { rows: stored } = await db.query<{ download_url: string; dataset_id: string }>(
-      `SELECT download_url, dataset_id FROM cms_releases WHERE source = 'archive' AND status = 'complete'`
+    // Like live releases, a stored snapshot records the measures it was read
+    // for, so adding a measure re-reads snapshots that predate it.
+    const { rows: stored } = await db.query<{ download_url: string; dataset_id: string; measure_ids: string[] }>(
+      `SELECT download_url, dataset_id, measure_ids FROM cms_releases WHERE source = 'archive' AND status = 'complete'`
     )
-    const done = new Set(stored.map(r => `${r.download_url.split('#')[0]} ${r.dataset_id}`))
+    const done = new Map(stored.map(r => [`${r.download_url.split('#')[0]} ${r.dataset_id}`, new Set(r.measure_ids)]))
+    const covered = (url: string, d: string) => {
+      const ids = done.get(`${url} ${d}`)
+      return !!ids && [...wantedMeasures.get(d)!].every(id => ids.has(id))
+    }
 
     for (const snap of await listSnapshots()) {
       const datasets = [...wantedMeasures.keys()].filter(d =>
-        !done.has(`${snap.url} ${d}`) && (!liveReleased.get(d) || snap.date < liveReleased.get(d)!)
+        !covered(snap.url, d) && (!liveReleased.get(d) || snap.date < liveReleased.get(d)!)
       )
       if (datasets.length === 0) {
         console.log(`= ${snap.date}: already stored`)
@@ -146,8 +154,7 @@ async function main() {
       }
 
       const csvs = await readCsvs(zip, wanted, (d, row) => {
-        const spec = MEASURE_DATASETS[d]
-        const raw = row[spec.measureIdColumn]?.trim()
+        const raw = rowMeasure(MEASURE_DATASETS[d], row)
         const id = MEASURE_ALIASES[raw] ?? raw
         // Closed hospitals have no current record; their history isn't shown.
         return wantedMeasures.get(d)!.has(id) && hospitals.has(row['Facility ID']?.trim())
@@ -157,8 +164,9 @@ async function main() {
       try {
         for (const [datasetId, { path, rows }] of csvs) {
           const spec = MEASURE_DATASETS[datasetId]
-          const scores = rows.map(spec.toScore).map(s => ({ ...s, measure_id: MEASURE_ALIASES[s.measure_id] ?? s.measure_id }))
-          const measureIds = [...new Set(scores.map(s => s.measure_id))].sort()
+          const scores = toScores(spec, rows).map(s => ({ ...s, measure_id: MEASURE_ALIASES[s.measure_id] ?? s.measure_id }))
+          const found = [...new Set(scores.map(s => s.measure_id))].sort()
+          const measureIds = [...wantedMeasures.get(datasetId)!].sort()
           const { rows: [release] } = await db.query<{ id: number }>(
             `INSERT INTO cms_releases (dataset_id, title, download_url, modified, released, source, status,
                                        row_count, measure_ids, completed_at)
@@ -169,7 +177,7 @@ async function main() {
             [datasetId, `Archive ${snap.date}: ${path.split('/').pop()}`, `${snap.url}#${path}`, snap.date, rows.length, measureIds]
           )
           await insertScores(db, release.id, rows, scores)
-          console.log(`+ ${snap.date} ${datasetId}: ${rows.length} rows (${measureIds.join(', ')})`)
+          console.log(`+ ${snap.date} ${datasetId}: ${rows.length} rows (${found.join(', ')})`)
         }
         await db.query('COMMIT')
       } catch (err) {

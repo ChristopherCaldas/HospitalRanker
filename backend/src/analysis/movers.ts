@@ -383,7 +383,8 @@ export async function writeMovers(db: Client, runId: number): Promise<void> {
     FROM measure_score_history s
     JOIN measures m USING (measure_id)
     JOIN hospitals h USING (facility_id)
-    WHERE s.measure_id IN (SELECT measure_id FROM analysis_measure_windows) AND s.start_date IS NOT NULL`)
+    WHERE m.category IS NOT NULL AND s.measure_id IN (SELECT measure_id FROM analysis_measure_windows)
+      AND s.start_date IS NOT NULL`)
   const { rows: finRows } = await db.query('SELECT * FROM hospital_finance_history')
   const { rows: chows } = await db.query('SELECT buyer_ccn, seller_ccn, effective_date FROM hospital_ownership_changes')
 

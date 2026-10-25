@@ -14,7 +14,9 @@ vi.mock('../src/services/movers', () => ({ getMovers: vi.fn(), getHospitalMovers
 vi.mock('../src/services/performance', () => ({
   getHospitalPerformance: vi.fn(), getContextSummary: vi.fn(), getLeaderboard: vi.fn(),
   getMeasurePerformance: vi.fn(), getSpotlight: vi.fn(), getBenchmarks: vi.fn(),
+  SCOPES: ['overall', 'outcome', 'process', 'mortality', 'safety', 'readmission', 'experience', 'timely_effective'],
 }))
+vi.mock('../src/services/quality', () => ({ getChain: vi.fn(), getEquity: vi.fn(), getValue: vi.fn() }))
 
 const { app } = await import('../src/app')
 const { pool } = await import('../src/db/pool')
@@ -25,7 +27,8 @@ const { getFinanceOverview, getHospitalFinance } = await import('../src/services
 const { getHistories } = await import('../src/services/history')
 const { getPredictors } = await import('../src/services/predictors')
 const { getMovers, getHospitalMovers } = await import('../src/services/movers')
-const { getHospitalPerformance } = await import('../src/services/performance')
+const { getHospitalPerformance, getLeaderboard } = await import('../src/services/performance')
+const { getChain, getEquity, getValue } = await import('../src/services/quality')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -102,7 +105,7 @@ describe('GET /api/hospitals', () => {
 
   it('adds history, finances, context and curated notes to a hospital', async () => {
     vi.mocked(getHospital).mockResolvedValue({ id: '330399', name: 'St Barnabas', measures: [] } as never)
-    vi.mocked(getHospitalPerformance).mockResolvedValue({ measures: [], overall: null })
+    vi.mocked(getHospitalPerformance).mockResolvedValue({ measures: [], overall: null, scopes: {}, allMeasures: [], peer: null })
     vi.mocked(getHistories).mockResolvedValue({ '330399': { safety: [] } })
     vi.mocked(getHospitalFinance).mockResolvedValue({ finance: { beds: 283 }, context: null } as never)
     vi.mocked(getHospitalMovers).mockResolvedValue({ readmission: { verdict: 'declined', from: '2022-06-30', to: '2025-06-30', change: -3, changeSe: 0.5 } })
@@ -140,5 +143,32 @@ describe('GET /api/movers', () => {
     expect((await request(app).get('/api/movers')).body).toEqual([])
     vi.mocked(getMovers).mockRejectedValue(new Error('boom'))
     expect((await request(app).get('/api/movers')).status).toBe(500)
+  })
+})
+
+describe('GET /api/performance', () => {
+  it('passes the scope and peer group through', async () => {
+    vi.mocked(getLeaderboard).mockResolvedValue({ hospitals: 1 } as never)
+    const res = await request(app).get('/api/performance?scope=outcome&groups=5&state=DE')
+    expect(res.status).toBe(200)
+    expect(getLeaderboard).toHaveBeenCalledWith('DE', expect.any(Number), 'outcome', 5)
+  })
+
+  it('ignores an invalid peer group and rejects an unknown scope', async () => {
+    vi.mocked(getLeaderboard).mockResolvedValue({ hospitals: 1 } as never)
+    await request(app).get('/api/performance?groups=9')
+    expect(getLeaderboard).toHaveBeenCalledWith(null, expect.any(Number), 'overall', null)
+    expect((await request(app).get('/api/performance?scope=vibes')).status).toBe(400)
+  })
+})
+
+describe('GET /api/quality/*', () => {
+  it('returns each analysis, 404 before the first run and 500 on errors', async () => {
+    vi.mocked(getChain).mockResolvedValue({ runCreatedAt: 'x', tests: [] })
+    vi.mocked(getEquity).mockResolvedValue(null)
+    vi.mocked(getValue).mockRejectedValue(new Error('down'))
+    expect((await request(app).get('/api/quality/chain')).body).toEqual({ runCreatedAt: 'x', tests: [] })
+    expect((await request(app).get('/api/quality/equity')).status).toBe(404)
+    expect((await request(app).get('/api/quality/value')).status).toBe(500)
   })
 })

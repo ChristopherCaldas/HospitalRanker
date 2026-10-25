@@ -299,7 +299,8 @@ export const inputQuery = (extraColumns = '', extraJoins = '') => `
     LEFT JOIN hospital_finance_ratios f ON f.facility_id = s.facility_id
     LEFT JOIN hospital_finance hf ON hf.facility_id = s.facility_id
     ${extraJoins}
-    WHERE a.avg_inpatient_occupancy IS NOT NULL AND a.stdzd_spend_pc IS NOT NULL AND a.dual_eligible_pct IS NOT NULL`
+    WHERE m.category IS NOT NULL
+      AND a.avg_inpatient_occupancy IS NOT NULL AND a.stdzd_spend_pc IS NOT NULL AND a.dual_eligible_pct IS NOT NULL`
 
 // Reads inputs for every category measure and writes results under `runId`.
 // Runs inside the analyze job's transaction.
@@ -307,7 +308,7 @@ export async function writePredictors(db: Client, runId: number): Promise<void> 
   const { rows } = await db.query(inputQuery())
   const { rows: history } = await db.query(`
     SELECT measure_id, facility_id, start_date, end_date, score::float8 AS score
-    FROM measure_score_history WHERE measure_id IN (SELECT measure_id FROM analysis_measure_windows)`)
+    FROM measure_score_history WHERE measure_id IN (SELECT measure_id FROM measures WHERE category IS NOT NULL)`)
 
   const numeric = (v: unknown) => (v === null || v === undefined ? null : Number(v))
   const measureIds = [...new Set(rows.map(r => r.measure_id as string))].sort()

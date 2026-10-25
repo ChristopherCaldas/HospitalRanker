@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
-import type { Benchmarks, Category, ContextSummary, Leaderboard, MeasurePerformance, MeasurePerformanceRow, Spotlight, SpotlightHospital } from '../types'
+import type { Benchmarks, Category, ContextSummary, Leaderboard, LeaderboardRow, MeasurePerformance, MeasurePerformanceRow, Scope, Spotlight, SpotlightHospital } from '../types'
+import { GROUPS, SCOPE_INFO } from '../lib/quality'
 import { CATEGORIES, STATES, formatMonth, formatValue } from '../lib/format'
 import { GROUP_LABELS, NOTE_KINDS, PREDICTOR_LABELS, VERDICT_LABELS, drivers, formatScore, reshuffle } from '../lib/performance'
 import { href } from '../lib/router'
@@ -41,7 +42,7 @@ export default function PerformanceView({ category }: { category: Category }) {
         items={[
           {
             term: 'Expected score',
-            text: "What a hospital would be predicted to score from its context alone: its type and ownership; its own share of low-income patients; its county's social vulnerability, poverty and uninsured rates and whether it's rural; its state's bed occupancy, Medicare spending and low-income share over the same period; and, for ER times and patient ratings only, how complex its patients are (case mix and teaching). Hospital size, finances and staffing are deliberately not part of it: larger hospitals should keep credit for the quality advantage experience brings, and money and staffing are partly management's choices.",
+            text: "What a hospital would be predicted to score from its context alone: its type and ownership; its own share of low-income patients; its county's social vulnerability, poverty and uninsured rates and whether it's rural; its state's bed occupancy, Medicare spending and low-income share over the same period; and, for measures that aren't already risk-adjusted (ER times, process percentages, patient ratings), how complex its patients are (case mix and teaching). Hospital size, finances and staffing are deliberately not part of it: larger hospitals should keep credit for the quality advantage experience brings, and money and staffing are partly management's choices.",
           },
           {
             term: 'Difference',
@@ -53,7 +54,7 @@ export default function PerformanceView({ category }: { category: Category }) {
           },
           {
             term: 'Overall score',
-            text: 'Each measure\'s difference in units of that measure\'s typical hospital-to-hospital spread, averaged over every measure the hospital has (at least 3). +1.00 means one typical spread better than expected across the board.',
+            text: "Each measure's difference in units of that measure's typical hospital-to-hospital spread (capped at 3), averaged within its group, then the groups weighted as in CMS's star rating (22% each for mortality, safety, readmission and patient experience, 12% for timely and effective care) over the groups the hospital has (at least 3). +1.00 means one typical spread better than expected across the board. Outcome and process scores use the same recipe on each half of the measures.",
           },
           {
             term: 'Share explained',
@@ -226,53 +227,93 @@ function FactorDetails({ summary }: { summary: ContextSummary }) {
   )
 }
 
+const LEADERBOARD_SCOPES: Scope[] = ['overall', 'outcome', 'process', ...GROUPS]
+
 function LeaderboardSection() {
   const [state, setState] = useState('')
+  const [scope, setScope] = useState<Scope>('overall')
+  const [groups, setGroups] = useState('')
   const [data, setData] = useState<Leaderboard | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
     axios
-      .get<Leaderboard>('/api/performance', { params: { state: state || undefined, limit: 10 } })
+      .get<Leaderboard>('/api/performance', { params: { state: state || undefined, limit: 10, scope, groups: groups || undefined } })
       .then(res => {
         setData(res.data)
         setError(false)
       })
       .catch(() => setError(true))
-  }, [state])
+  }, [state, scope, groups])
+
+  // Within a state the server's ranks are national, so number the lists.
+  const rank = (list: 'top' | 'bottom') => (h: LeaderboardRow, i: number) =>
+    !state ? h.nationalRank : list === 'top' ? i + 1 : (data?.hospitals ?? 0) - i
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Step 2</p>
-          <h3 className="text-lg font-semibold text-gray-800">Overall: who beats expectations the most</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Hospitals with at least 3 measures, ranked by how far they beat their expected scores across all of them.
+          <h3 className="text-lg font-semibold text-gray-800">Who beats expectations the most</h3>
+          <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+            Measures are averaged within five groups (mortality, safety, readmission, patient experience, timely and
+            effective care), then the groups are weighted as in CMS's star rating: 22% each, 12% for timely and
+            effective care. Outcome and process scores split the same measures along{' '}
+            <a href={href('framework')} className="text-blue-600 hover:underline">Donabedian's</a> line.
           </p>
         </div>
-        <select
-          value={state}
-          onChange={e => setState(e.target.value)}
-          aria-label="State"
-          className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
-        >
-          <option value="">Nationwide</option>
-          {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={groups}
+            onChange={e => setGroups(e.target.value)}
+            aria-label="Compare with"
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
+          >
+            <option value="">All hospitals</option>
+            <option value="5">Full-service (all 5 groups)</option>
+            <option value="4">4 measure groups</option>
+            <option value="3">3 measure groups</option>
+          </select>
+          <select
+            value={state}
+            onChange={e => setState(e.target.value)}
+            aria-label="State"
+            className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white"
+          >
+            <option value="">Nationwide</option>
+            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
       </div>
+
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Score">
+        {LEADERBOARD_SCOPES.map(s => (
+          <button
+            key={s} type="button" onClick={() => setScope(s)} aria-pressed={scope === s} title={SCOPE_INFO[s].help}
+            className={`px-3 py-1.5 rounded-md text-sm ${scope === s ? 'bg-gray-900 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'}`}
+          >
+            {SCOPE_INFO[s].label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500 -mt-2">
+        {SCOPE_INFO[scope].help}{' '}
+        {scope === 'overall' && !groups && 'Specialty hospitals (orthopedic, surgical) report fewer groups and often top the full list; CMS compares hospitals only with others reporting the same number of groups, which the "Compare with" menu does.'}
+      </p>
 
       {error && <p className="text-red-500 text-sm">Couldn't load the leaderboard.</p>}
       {data && (
         <>
           <p className="text-sm text-gray-600">
             Of {data.hospitals.toLocaleString('en-US')} hospitals{state ? ` in ${state}` : ''},{' '}
-            <strong className="text-green-800">{data.better}</strong> are clearly better than expected overall and{' '}
+            <strong className="text-green-800">{data.better}</strong> are clearly better than expected on{' '}
+            {scope === 'overall' ? 'the overall score' : SCOPE_INFO[scope].label.toLowerCase()} and{' '}
             <strong className="text-red-800">{data.worse}</strong> clearly worse; the rest are within the normal range.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <LeaderboardTable title="Most above expectations" tone="text-green-700" rows={data.top} rankKey={state ? 'stateRank' : 'nationalRank'} />
-            <LeaderboardTable title="Most below expectations" tone="text-red-700" rows={data.bottom} rankKey={state ? 'stateRank' : 'nationalRank'} />
+            <LeaderboardTable title="Most above expectations" tone="text-green-700" rows={data.top} rank={rank('top')} />
+            <LeaderboardTable title="Most below expectations" tone="text-red-700" rows={data.bottom} rank={rank('bottom')} />
           </div>
         </>
       )}
@@ -280,11 +321,11 @@ function LeaderboardSection() {
   )
 }
 
-function LeaderboardTable({ title, tone, rows, rankKey }: {
+function LeaderboardTable({ title, tone, rows, rank }: {
   title: string
   tone: string
   rows: Leaderboard['top']
-  rankKey: 'nationalRank' | 'stateRank'
+  rank: (h: LeaderboardRow, i: number) => number
 }) {
   return (
     <div>
@@ -299,12 +340,12 @@ function LeaderboardTable({ title, tone, rows, rankKey }: {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {rows.map(h => (
+            {rows.map((h, i) => (
               <tr key={h.id} className="align-top">
-                <td className="px-3 py-2 text-gray-400 tabular-nums">{h[rankKey]}</td>
+                <td className="px-3 py-2 text-gray-400 tabular-nums">{rank(h, i)}</td>
                 <td className="px-3 py-2">
                   <a href={href('hospitals', h.id)} className="font-medium text-gray-800 hover:text-blue-700 hover:underline">{h.name}</a>
-                  <div className="text-xs text-gray-500">{h.city}, {h.state} · {h.measures} measures</div>
+                  <div className="text-xs text-gray-500">{h.city}, {h.state} · {h.measures} measures in {h.groups} {h.groups === 1 ? 'group' : 'groups'}</div>
                   {h.verdict !== 'as_expected' && (
                     <span className={`inline-block mt-1 px-1.5 py-0.5 rounded border text-xs ${VERDICT_LABELS[h.verdict].className}`}>
                       {VERDICT_LABELS[h.verdict].label}

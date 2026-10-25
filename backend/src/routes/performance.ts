@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
-import { getBenchmarks, getContextSummary, getLeaderboard, getMeasurePerformance, getSpotlight } from '../services/performance'
+import { SCOPES, getBenchmarks, getContextSummary, getLeaderboard, getMeasurePerformance, getSpotlight, type Scope } from '../services/performance'
 import { CATEGORY_META } from '../services/categories'
 
 const router = Router()
@@ -41,10 +41,18 @@ router.get('/benchmarks', async (_req: Request, res: Response) => {
   }
 })
 
-// GET /api/performance?state=&limit= — overall context-adjusted leaderboard.
+// GET /api/performance?state=&limit=&scope=&groups= — context-adjusted
+// leaderboard on the overall score, a domain or a measure group; `groups`
+// (3-5) limits it to hospitals with that many measure groups.
 router.get('/', async (req: Request, res: Response) => {
+  const scope = typeof req.query.scope === 'string' ? req.query.scope : 'overall'
+  if (!(SCOPES as readonly string[]).includes(scope)) {
+    res.status(400).json({ error: 'Unknown scope' })
+    return
+  }
+  const groups = Number(req.query.groups)
   try {
-    res.json(await getLeaderboard(stateParam(req), limitParam(req)))
+    res.json(await getLeaderboard(stateParam(req), limitParam(req), scope as Scope, [3, 4, 5].includes(groups) ? groups : null))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to fetch leaderboard' })

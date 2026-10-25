@@ -2,7 +2,7 @@ import axios from 'axios'
 import { parse } from 'csv-parse'
 import { Client } from 'pg'
 import { requireEnv } from '../db/env'
-import { CsvRow, HOSPITAL_INFO_DATASET, MEASURE_DATASETS } from './datasets'
+import { CsvRow, HOSPITAL_INFO_DATASET, MEASURE_DATASETS, rowMeasure, toScores } from './datasets'
 import { toBool, toInt, toText } from './parse'
 import { withRetry } from './retry'
 import { insertScores } from './store'
@@ -105,11 +105,11 @@ async function ingestDataset(db: Client, datasetId: string, measureIds: string[]
     if (!isHospitalInfo && !spec) throw new Error(`No CSV mapping for dataset ${datasetId}`)
 
     const wanted = new Set(measureIds)
-    const rows = await downloadCsv(meta, row => isHospitalInfo || wanted.has(row[spec.measureIdColumn]?.trim()))
+    const rows = await downloadCsv(meta, row => isHospitalInfo || wanted.has(rowMeasure(spec, row)))
 
     await db.query('BEGIN')
     if (isHospitalInfo) await upsertHospitals(db, rows)
-    else await insertScores(db, releaseId, rows, rows.map(spec.toScore))
+    else await insertScores(db, releaseId, rows, toScores(spec, rows))
     await db.query(
       `UPDATE cms_releases SET status = 'complete', row_count = $2, measure_ids = $3, completed_at = now()
        WHERE id = $1`,

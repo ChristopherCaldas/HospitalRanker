@@ -1,5 +1,6 @@
 import type { Client } from 'pg'
 import { crossValidatedR2, noiseModel, predict, shrink, spearman, weightedR2, wlsWithSe } from './stats'
+import { allScopes, type Domain, type QualityGroup, type ScoredMeasure } from './scores'
 
 // "Expected vs. actual" hospital performance.
 //
@@ -26,12 +27,14 @@ import { crossValidatedR2, noiseModel, predict, shrink, spearman, weightedR2, wl
 //
 // The gap (actual - expected, oriented so + is better) is judged against its
 // uncertainty, handled per measure:
-//   shrunk       raw measures (ER minutes, star ratings): empirical-Bayes
-//                shrinkage toward the expected score; noise ~ 1/cases, plus a
-//                fixed rounding-noise floor for whole-star ratings
+//   shrunk       raw measures (ER minutes, process percentages, infection
+//                ratios, star ratings): empirical-Bayes shrinkage toward the
+//                expected score; noise ~ 1/cases (predicted infections for
+//                SIRs), plus a fixed rounding-noise floor for whole-star ratings
 //   cms_smoothed CMS's published scores are already shrunk by its own models
-//                (hierarchical models for mortality/readmission, reliability
-//                weighting for PSI 90), so no second shrinkage; their
+//                (hierarchical models for mortality, readmission and hip/knee
+//                complications, reliability weighting for PSI 90), so no
+//                second shrinkage; their
 //                uncertainty is a posterior SD built from the sampling SE
 //                (binomial from case counts, or CMS's interval for PSI 90)
 //
@@ -44,30 +47,25 @@ import { crossValidatedR2, noiseModel, predict, shrink, spearman, weightedR2, wl
 export type Method = 'shrunk' | 'cms_smoothed'
 export type Verdict = 'better' | 'as_expected' | 'worse'
 
-const METHODS: Record<string, Method> = {
-  OP_18b: 'shrunk',
-  H_COMP_1_STAR_RATING: 'shrunk',
-  MORT_30_AMI: 'cms_smoothed',
-  READM_30_HF: 'cms_smoothed',
-  PSI_90: 'cms_smoothed',
-}
+// CMS's model-based rates; everything else is published raw.
+const CMS_SMOOTHED = /^(MORT_30_|READM_30_|COMP_HIP_KNEE$|PSI_90$)/
+export const methodOf = (measureId: string): Method => (CMS_SMOOTHED.test(measureId) ? 'cms_smoothed' : 'shrunk')
 
 // Measures with no case counts: sampling SE comes from CMS's 95% interval.
 // (PSI 90's interval is wider than the observed spread between hospitals,
 // a sign the published values are already smoothed.)
 const SE_FROM_INTERVAL = new Set(['PSI_90'])
 
-// A hospital's contribution from any one measure to the overall score is
-// capped at this many SDs, so one extreme measure (PSI 90 has a long bad
-// tail) can't decide the composite on its own.
+// A hospital's contribution from any one measure to a group, domain or
+// overall score is capped at this many SDs, so one extreme measure (PSI 90 has
+// a long bad tail) can't decide it on its own.
 export const COMPOSITE_CAP = 3
 
 // Ratings published as whole stars carry rounding error: uniform over a
 // one-star bin, variance 1/12, regardless of how many surveys there were.
-const NOISE_FLOOR: Record<string, number> = { H_COMP_1_STAR_RATING: 1 / 12 }
+const noiseFloor = (measureId: string) => (/_STAR_RATING$/.test(measureId) ? 1 / 12 : 0)
 
 export const Z_95 = 1.96
-export const MIN_COMPOSITE_MEASURES = 3
 
 export interface HospitalInput {
   facilityId: string
@@ -158,18 +156,19 @@ const GROUPS: Record<string, number[]> = {
 }
 
 // Which groups each measure uses. Case mix and teaching intensity stand in
-// for how sick and complex patients are, which matters for the measures CMS
-// doesn't risk-adjust (ER time, patient surveys). CMS's mortality,
-// readmission and PSI 90 scores are already adjusted for patient risk, so
-// there those two would mostly measure what big academic centers are good
-// at, and adjusting it away would erase the credit they earn (the same
-// reasoning that keeps volume out).
+// for how sick and complex patients are, which matters for the measures that
+// aren't risk-adjusted (ER time, process percentages, patient surveys). CMS's
+// mortality, readmission, complication and PSI 90 scores are already adjusted
+// for patient risk, and infection ratios' predicted counts already account for
+// teaching status and size, so there those two would mostly measure what big
+// academic centers are good at, and adjusting it away would erase the credit
+// they earn (the same reasoning that keeps volume out).
 const UNADJUSTED_ONLY = new Set(['complexity'])
-const RISK_ADJUSTED = new Set(['MORT_30_AMI', 'READM_30_HF', 'PSI_90'])
+const RISK_ADJUSTED = /^(MORT_30_|READM_30_|COMP_HIP_KNEE$|PSI_90$|HAI_)/
 
 export function activeColumns(measureId: string): number[] {
   const dropped = new Set(
-    RISK_ADJUSTED.has(measureId)
+    RISK_ADJUSTED.test(measureId)
       ? Object.entries(GROUPS).filter(([g]) => UNADJUSTED_ONLY.has(g)).flatMap(([, cols]) => cols)
       : []
   )
@@ -243,8 +242,8 @@ export function fitMeasure(
   higherIsBetter: boolean,
   rows: HospitalInput[]
 ): { summary: ModelSummary; results: HospitalResult[] } {
-  const method = METHODS[measureId] ?? 'shrunk'
-  const floor = NOISE_FLOOR[measureId] ?? 0
+  const method = methodOf(measureId)
+  const floor = noiseFloor(measureId)
   const sign = higherIsBetter ? 1 : -1
   const fromInterval = SE_FROM_INTERVAL.has(measureId)
   const usable = rows.filter(r =>
@@ -347,70 +346,12 @@ export function fitMeasure(
   }
 }
 
-export interface CompositeResult {
-  facilityId: string
-  state: string
-  measures: number
-  score: number
-  scoreSe: number
-  verdict: Verdict
-  nationalRank: number
-  stateRank: number
-}
-
-// Puts each measure's gaps in units of that measure's tau (the real spread of
-// performance), capped at +-COMPOSITE_CAP, then averages them per hospital; measures are treated as
-// independent when combining uncertainty. The composite is then shrunk by its
-// own uncertainty, and the clear-cases margin is one SD of the real spread of
-// composites (the same rule as each measure, on the composite scale).
-export function composite(byMeasure: { tau: number; results: HospitalResult[] }[]): CompositeResult[] {
-  const scaled = new Map<string, { state: string; values: number[]; ses: number[] }>()
-  for (const { tau, results } of byMeasure) {
-    if (!(tau > 0)) continue
-    for (const r of results) {
-      const entry = scaled.get(r.facilityId) ?? { state: r.state, values: [], ses: [] }
-      entry.values.push(Math.min(COMPOSITE_CAP, Math.max(-COMPOSITE_CAP, r.adjustedGap / tau)))
-      entry.ses.push(r.gapSe / tau)
-      scaled.set(r.facilityId, entry)
-    }
-  }
-
-  const rows = [...scaled.entries()]
-    .filter(([, e]) => e.values.length >= MIN_COMPOSITE_MEASURES)
-    .map(([facilityId, e]) => {
-      const k = e.values.length
-      const score = e.values.reduce((a, b) => a + b, 0) / k
-      const scoreSe = Math.sqrt(e.ses.reduce((a, s) => a + s * s, 0)) / k
-      return { facilityId, state: e.state, measures: k, raw: score, rawSe: scoreSe }
-    })
-
-  // Shrink composites by their own uncertainty too, so a hospital with three
-  // noisy measures can't top the list on luck: tau_c^2 is the composite
-  // spread minus average noise; each score is pulled toward 0 accordingly.
-  const mean = rows.reduce((a, r) => a + r.raw, 0) / Math.max(1, rows.length)
-  const variance = rows.reduce((a, r) => a + (r.raw - mean) ** 2, 0) / Math.max(1, rows.length - 1)
-  const tau2 = Math.max(1e-6, variance - rows.reduce((a, r) => a + r.rawSe ** 2, 0) / Math.max(1, rows.length))
-  const margin = Math.sqrt(tau2)
-  const ranked = rows
-    .map(r => {
-      const post = shrink(r.raw, r.rawSe ** 2, tau2)
-      return { facilityId: r.facilityId, state: r.state, measures: r.measures, score: post.mean, scoreSe: post.sd }
-    })
-    .sort((a, b) => b.score - a.score || a.facilityId.localeCompare(b.facilityId))
-
-  const stateCounts = new Map<string, number>()
-  return ranked.map((r, i) => {
-    const stateRank = (stateCounts.get(r.state) ?? 0) + 1
-    stateCounts.set(r.state, stateRank)
-    return { ...r, verdict: verdictOf(r.score, r.scoreSe, margin), nationalRank: i + 1, stateRank }
-  })
-}
-
-// Reads inputs for every category measure, fits, and writes the results under
-// `runId`. Runs inside the analyze job's transaction.
+// Reads inputs for every quality measure, fits, writes the results and the
+// group/domain/overall scores under `runId`. Runs inside the analyze job's
+// transaction.
 export async function writeExpectedPerformance(db: Client, runId: number): Promise<void> {
   const { rows } = await db.query(`
-    SELECT s.measure_id, m.higher_is_better, s.facility_id, h.state, s.score::float8 AS score, s.denominator AS cases,
+    SELECT s.measure_id, m.higher_is_better, m.quality_group, m.domain, s.facility_id, h.state, s.score::float8 AS score, s.denominator AS cases,
            s.lower_estimate::float8 AS lower_estimate, s.higher_estimate::float8 AS higher_estimate,
            h.hospital_type, h.ownership,
            a.avg_inpatient_occupancy::float8 AS occupancy, a.stdzd_spend_pc::float8 AS spend,
@@ -424,9 +365,10 @@ export async function writeExpectedPerformance(db: Client, runId: number): Promi
     JOIN hospitals h ON h.facility_id = s.facility_id
     JOIN analysis_state_measure_live a ON a.measure_id = s.measure_id AND a.state = h.state
     LEFT JOIN hospital_context c ON c.facility_id = s.facility_id
-    WHERE a.avg_inpatient_occupancy IS NOT NULL AND a.stdzd_spend_pc IS NOT NULL AND a.dual_eligible_pct IS NOT NULL`)
+    WHERE m.quality_group IS NOT NULL
+      AND a.avg_inpatient_occupancy IS NOT NULL AND a.stdzd_spend_pc IS NOT NULL AND a.dual_eligible_pct IS NOT NULL`)
 
-  const fitted: { tau: number; results: HospitalResult[] }[] = []
+  const fitted: ScoredMeasure[] = []
   for (const measureId of [...new Set(rows.map(r => r.measure_id as string))].sort()) {
     const measureRows = rows.filter(r => r.measure_id === measureId)
     const { summary, results } = fitMeasure(
@@ -443,7 +385,10 @@ export async function writeExpectedPerformance(db: Client, runId: number): Promi
         },
       }))
     )
-    fitted.push({ tau: summary.tau, results })
+    fitted.push({
+      measureId, group: measureRows[0].quality_group as QualityGroup, domain: measureRows[0].domain as Domain,
+      tau: summary.tau, results,
+    })
 
     await db.query(
       `INSERT INTO analysis_expected_models
@@ -465,15 +410,28 @@ export async function writeExpectedPerformance(db: Client, runId: number): Promi
       `rank agreement ${summary.rankAgreement.toFixed(2)}; better ${count('better')}, worse ${count('worse')}; R2 points lost without: ${imp}`)
   }
 
-  const overall = composite(fitted)
-  const col = <K extends keyof CompositeResult>(k: K) => overall.map(r => r[k])
+  const scopes = allScopes(fitted)
+  for (const [scope, scored] of Object.entries(scopes)) {
+    const col = <K extends keyof (typeof scored)[number]>(k: K) => scored.map(r => r[k])
+    await db.query(
+      `INSERT INTO analysis_hospital_scores (run_id, scope, facility_id, state, measures, groups, score, score_se,
+                                             verdict, national_rank, state_rank)
+       SELECT $1, $2, * FROM unnest($3::text[], $4::text[], $5::int[], $6::int[], $7::float8[], $8::float8[],
+                                    $9::text[], $10::int[], $11::int[])`,
+      [runId, scope, col('facilityId'), col('state'), col('measures'), col('groups'), col('score'), col('scoreSe'),
+        col('verdict'), col('nationalRank'), col('stateRank')]
+    )
+    const count = (v: Verdict) => scored.filter(r => r.verdict === v).length
+    console.log(`  ${scope}: ${scored.length} hospitals; better ${count('better')}, worse ${count('worse')}`)
+  }
+
+  // The overall score also backs the existing composite table.
+  const overall = scopes.overall
+  const col = <K extends keyof (typeof overall)[number]>(k: K) => overall.map(r => r[k])
   await db.query(
     `INSERT INTO analysis_hospital_composite (run_id, facility_id, state, measures, score, score_se, verdict, national_rank, state_rank)
      SELECT $1, * FROM unnest($2::text[], $3::text[], $4::int[], $5::float8[], $6::float8[], $7::text[], $8::int[], $9::int[])`,
     [runId, col('facilityId'), col('state'), col('measures'), col('score'), col('scoreSe'), col('verdict'),
       col('nationalRank'), col('stateRank')]
   )
-  const better = overall.filter(r => r.verdict === 'better').length
-  const worse = overall.filter(r => r.verdict === 'worse').length
-  console.log(`  composite: ${overall.length} hospitals with ${MIN_COMPOSITE_MEASURES}+ measures; better ${better}, worse ${worse}`)
 }
