@@ -1,8 +1,11 @@
 import fs from 'fs'
 import path from 'path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import { miles } from '../src/ingest/access'
+
+// The service's default pool needs DATABASE_URL; these tests pass PGlite instead.
+vi.mock('../src/db/pool', () => ({ pool: {} }))
 import { nearbyHospitals, originFromPoint, originFromZip } from '../src/services/nearby'
 
 // The nearby SQL against every real migration in PGlite. Three Boston-area
