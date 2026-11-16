@@ -36,7 +36,7 @@ const CATALOG = 'https://data.cms.gov/data.json'
 const GV_TITLE = /^Medicare Geographic Variation - by National, State & County/
 const ACS_URL = (year: number, table: string) =>
   `https://www2.census.gov/programs-surveys/acs/summary_file/${year}/table-based-SF/data/5YRData/acsdt5y${year}-${table}.dat`
-const GAZETTEER_URL = (year: number) =>
+export const GAZETTEER_URL = (year: number) =>
   `https://www2.census.gov/geo/docs/maps-data/data/gazetteer/${year}_Gazetteer/${year}_Gaz_zcta_national.zip`
 const HRSA_SITES = 'https://data.hrsa.gov/DataDownload/DD_Files/Health_Center_Service_Delivery_and_LookAlike_Sites.csv'
 const NPPES = 'https://npiregistry.cms.hhs.gov/api/'
@@ -200,7 +200,7 @@ async function allUrgentCares(zip3s: string[]): Promise<Map<string, string>> {
   return urgentCareSites(results)
 }
 
-async function unzipFirst(buf: Buffer): Promise<string> {
+export async function unzipFirst(buf: Buffer): Promise<string> {
   const zip = await new Promise<yauzl.ZipFile>((resolve, reject) =>
     yauzl.fromBuffer(buf, { lazyEntries: true }, (err, z) => (err ? reject(err) : resolve(z)))
   )
@@ -219,7 +219,7 @@ async function unzipFirst(buf: Buffer): Promise<string> {
 
 const exists = (url: string) => axios.head(url, { timeout: 30_000 }).then(() => true, () => false)
 
-async function firstExisting<T>(candidates: [T, string][]): Promise<[T, string]> {
+export async function firstExisting<T>(candidates: [T, string][]): Promise<[T, string]> {
   for (const c of candidates) if (await exists(c[1])) return c
   throw new Error(`none found: ${candidates.map(c => c[1]).join(', ')}`)
 }

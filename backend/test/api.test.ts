@@ -18,6 +18,7 @@ vi.mock('../src/services/performance', () => ({
 }))
 vi.mock('../src/services/profile', () => ({ getProfileExtras: vi.fn() }))
 vi.mock('../src/services/quality', () => ({ getChain: vi.fn(), getEquity: vi.fn(), getValue: vi.fn() }))
+vi.mock('../src/services/nearby', () => ({ MAX_MILES: 100, nearbyHospitals: vi.fn(), originFromZip: vi.fn(), originFromPoint: vi.fn() }))
 
 const { app } = await import('../src/app')
 const { pool } = await import('../src/db/pool')
@@ -31,6 +32,7 @@ const { getMovers, getHospitalMovers } = await import('../src/services/movers')
 const { getHospitalPerformance, getLeaderboard } = await import('../src/services/performance')
 const { getChain, getEquity, getValue } = await import('../src/services/quality')
 const { getProfileExtras } = await import('../src/services/profile')
+const { nearbyHospitals, originFromZip, originFromPoint } = await import('../src/services/nearby')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -181,5 +183,32 @@ describe('GET /api/hospitals/:id/profile', () => {
     expect((await request(app).get('/api/hospitals/080001/profile')).body).toMatchObject({ system: null })
     vi.mocked(getProfileExtras).mockResolvedValueOnce(null)
     expect((await request(app).get('/api/hospitals/999999/profile')).status).toBe(404)
+  })
+})
+
+describe('GET /api/nearby', () => {
+  it('rejects bad input without touching the database', async () => {
+    for (const q of ['', '?zip=0213', '?zip=abcde', '?lat=42', '?lat=999&lon=0', '?zip=02138&miles=500', '?zip=02138&miles=0', '?zip=02138&scope=vibes']) {
+      expect((await request(app).get('/api/nearby' + q)).status).toBe(400)
+    }
+    expect(originFromZip).not.toHaveBeenCalled()
+    expect(originFromPoint).not.toHaveBeenCalled()
+  })
+
+  it('searches from a ZIP or a point, and 404s an unknown ZIP', async () => {
+    const origin = { lat: 42.38, lon: -71.13, zip: '02138', approximate: false }
+    vi.mocked(originFromZip).mockResolvedValueOnce(origin)
+    vi.mocked(nearbyHospitals).mockResolvedValue([])
+    const res = await request(app).get('/api/nearby?zip=02138&miles=10&scope=safety')
+    expect(res.body).toEqual({ origin: { zip: '02138', approximate: false }, miles: 10, scope: 'safety', hospitals: [] })
+    expect(nearbyHospitals).toHaveBeenCalledWith(origin, 10, 'safety')
+
+    vi.mocked(originFromPoint).mockResolvedValueOnce(origin)
+    const point = await request(app).get('/api/nearby?lat=42.38&lon=-71.13')
+    expect(point.body).toMatchObject({ miles: 25, scope: 'overall' })
+    expect(point.body.origin).not.toHaveProperty('lat')
+
+    vi.mocked(originFromZip).mockResolvedValueOnce(null)
+    expect((await request(app).get('/api/nearby?zip=99999')).status).toBe(404)
   })
 })

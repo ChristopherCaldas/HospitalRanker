@@ -38,6 +38,8 @@ jobs:
       - run: npm run ingest:context --workspace=backend -- ${{ inputs.force && '--force' || '' }}
       # Yearly cost reports since 2017 and CMS change-of-ownership records, for the movers analysis; a no-op when unchanged.
       - run: npm run ingest:changes --workspace=backend -- ${{ inputs.force && '--force' || '' }}
+      # Census ZIP code points for the 'near you' search; yearly, a no-op when unchanged.
+      - run: npm run ingest:zips --workspace=backend -- ${{ inputs.force && '--force' || '' }}
       # Medicare Geographic Variation is yearly; the monthly check is a no-op until a new release.
       - run: npm run ingest:spend --workspace=backend -- ${{ inputs.force && '--force' || '' }}
       # New snapshot only if a CMS release or spend version changed.

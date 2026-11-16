@@ -11,6 +11,7 @@ import FrameworkView from './views/FrameworkView'
 import EquityView from './views/EquityView'
 import ProfilesView from './views/ProfilesView'
 import HospitalSearchView from './views/HospitalSearchView'
+import NearbyView from './views/NearbyView'
 import HospitalDetailView from './views/HospitalDetailView'
 import { SECTIONS } from './components/SiteGuide'
 
@@ -57,8 +58,9 @@ export default function App() {
       {section === 'profiles' && <ProfilesView path={route.slice(1)} />}
       {section === 'predictors' && <PredictorsView />}
       {section === 'movers' && <MoversView category={asCategory(arg)} />}
+      {section === 'nearby' && <NearbyView zip={arg} />}
       {section === 'hospitals' && (arg ? <HospitalDetailView id={arg} /> : <HospitalSearchView />)}
-      {!['states', 'performance', 'finances', 'equity', 'profiles', 'framework', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
+      {!['states', 'nearby', 'performance', 'finances', 'equity', 'profiles', 'framework', 'predictors', 'movers', 'hospitals'].includes(section) && <RankingsView category={asCategory(arg)} />}
     </div>
   )
 }

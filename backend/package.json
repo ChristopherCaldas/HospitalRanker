@@ -13,6 +13,7 @@
     "ingest:context": "tsx src/ingest/context.ts",
     "ingest:changes": "tsx src/ingest/changes.ts",
     "ingest:access": "tsx src/ingest/access.ts",
+    "ingest:zips": "tsx src/ingest/zips.ts",
     "analyze": "tsx src/analysis/index.ts",
     "explore:access": "tsx src/analysis/explore/access.ts",
     "test": "vitest run",

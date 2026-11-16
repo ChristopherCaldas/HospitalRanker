@@ -526,3 +526,28 @@ export interface ProfileExtras {
   }
   stateRanks: Partial<Record<Scope, { stateRank: number; stateCount: number }>>
 }
+
+// GET /api/nearby: every hospital within `miles` of a ZIP or point, best first.
+export interface NearbyHospital {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  hospitalType: string | null
+  emergencyServices: boolean | null
+  overallRating: number | null
+  miles: number
+  score: number | null
+  scoreSe: number | null
+  verdict: Verdict | null
+  measures: number | null
+  groups: number | null
+  overallGroups: number | null // measure groups behind the overall score: 5 = full-service
+}
+
+export interface Nearby {
+  origin: { zip: string; approximate: boolean }
+  miles: number
+  scope: Scope
+  hospitals: NearbyHospital[]
+}

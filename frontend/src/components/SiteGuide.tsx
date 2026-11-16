@@ -2,6 +2,7 @@ import { href } from '../lib/router'
 
 export const SECTIONS = [
   { id: 'rankings', label: 'Rankings', blurb: 'The five best and five worst hospitals in the country on one topic. Pick the topic with the tabs below the header.' },
+  { id: 'nearby', label: 'Near you', blurb: 'The best and worst hospitals within a few miles of your ZIP code or location.' },
   { id: 'hospitals', label: 'Hospitals', blurb: 'Look up any hospital by name or city to see its full report card.' },
   { id: 'profiles', label: 'Profiles', blurb: 'An in-depth report on one hospital: structure, process, outcomes, cost and trends, with featured hospitals and health systems.' },
   { id: 'performance', label: 'Expected vs. actual', blurb: "Which hospitals do better or worse than you'd expect, given the patients and community they serve." },
@@ -45,7 +46,7 @@ export default function SiteGuide() {
         </p>
         <p className="text-gray-500">
           A good place to start: open <a href={href('hospitals')} className="text-blue-700 hover:underline">Hospitals</a> and
-          search for a hospital near you.
+          search for a hospital, or see the best and worst <a href={href('nearby')} className="text-blue-700 hover:underline">near you</a>.
         </p>
       </div>
     </details>

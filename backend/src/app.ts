@@ -8,6 +8,7 @@ import financesRouter from './routes/finances'
 import predictorsRouter from './routes/predictors'
 import moversRouter from './routes/movers'
 import qualityRouter from './routes/quality'
+import nearbyRouter from './routes/nearby'
 import { pool } from './db/pool'
 
 // The Express app, separate from `listen` so tests can drive it directly.
@@ -23,6 +24,7 @@ app.use('/api/finances', financesRouter)
 app.use('/api/predictors', predictorsRouter)
 app.use('/api/movers', moversRouter)
 app.use('/api/quality', qualityRouter)
+app.use('/api/nearby', nearbyRouter)
 
 app.get('/api/health', async (_req, res) => {
   try {
